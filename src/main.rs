@@ -213,6 +213,20 @@ async fn create_pr(client: &Octocrab, pkg: String, after: String) -> Result<(u64
             .arg("git@github.com:aosc-dev/aosc-os-abbs")
             .output()
             .await?;
+
+        Command::new("git")
+            .arg("config")
+            .arg("user.email")
+            .arg("maintainers@aosc.io")
+            .output()
+            .await?;
+
+        Command::new("git")
+            .arg("config")
+            .arg("user.name")
+            .arg("AOSC Maintainers")
+            .output()
+            .await?;
     }
 
     let page = client
