@@ -171,7 +171,7 @@ async fn create_pr(client: &Octocrab, pkg: String) -> Result<()> {
     if !path.is_dir() {
         Command::new("git")
             .arg("clone")
-            .arg("https://github.com/aosc-dev/aosc-os-abbs")
+            .arg("git@github.com:aosc-dev/aosc-os-abbs")
             .output()
             .await?;
     }
@@ -324,6 +324,7 @@ pub async fn find_update_and_update_checksum(
                 .current_dir(&abbs_path)
                 .output()
                 .await?;
+
             Command::new("git")
                 .arg("push")
                 .arg("--set-upstream")
