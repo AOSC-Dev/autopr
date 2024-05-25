@@ -126,7 +126,8 @@ impl From<eyre::Error> for EyreError {
     }
 }
 
-async fn handler(State(state): State<AppState>, Json(_json): Json<Value>) -> Result<(), EyreError> {
+async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Result<(), EyreError> {
+    info!("Github webhook got message: {json:#?}");
     fetch_pkgs_updates(&state.client, state.lines, &state.github_client).await?;
 
     Ok(())
