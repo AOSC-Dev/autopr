@@ -44,6 +44,7 @@ struct AppState {
     client: Client,
     github_client: octocrab::Octocrab,
     bot_name: String,
+    repo_url: String,
 }
 
 pub static ABBS_REPO_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
@@ -104,6 +105,7 @@ async fn main() -> Result<()> {
             client,
             github_client,
             bot_name,
+            repo_url: std::env::var("repo_url")?,
         });
 
     let listener = tokio::net::TcpListener::bind(webhook_uri).await?;
@@ -131,6 +133,7 @@ impl From<eyre::Error> for EyreError {
 #[derive(Deserialize, Debug)]
 struct Webhook {
     pusher: Option<Pusher>,
+    repository: Option<WebhookRepo>
 }
 
 #[derive(Deserialize, Debug)]
@@ -139,15 +142,26 @@ struct Pusher {
     _email: Option<String>,
 }
 
+#[derive(Deserialize, Debug)]
+struct WebhookRepo {
+    clone_url: Option<String>
+}
+
 async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Result<(), EyreError> {
     info!("Github webhook got message: {json:#?}");
 
     let json: Webhook = serde_json::from_value(json).map_err(|e| eyre!(e))?;
 
     let pusher_name = json.pusher.and_then(|x| x.name);
+    let clone_url = json.repository.and_then(|x| x.clone_url);
 
     if pusher_name == Some(state.bot_name) {
         info!("Ignoring webhook from self");
+        return Ok(());
+    }
+
+    if clone_url != Some(state.repo_url) {
+        info!("Ignoring webhook from wrong repo");
         return Ok(());
     }
 
