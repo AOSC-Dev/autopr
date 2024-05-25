@@ -185,7 +185,11 @@ async fn fetch_pkgs_updates(
             },
             Some(x) => {
                 info!("Creating Pull Request: {}", x.name);
-                let pr = create_pr(octoctab, x.name.clone()).await?;
+                let pr = create_pr(octoctab, x.name.clone()).await;
+
+                dbg!(&pr);
+
+                let pr = pr?;
                 info!("Pull Request created: {}: {}", pr.0, pr.1);
             }
         }
