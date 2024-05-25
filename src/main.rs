@@ -218,6 +218,7 @@ async fn create_pr(client: &Octocrab, pkg: String, after: String) -> Result<(u64
             .arg("config")
             .arg("user.email")
             .arg("maintainers@aosc.io")
+            .current_dir(&path)
             .output()
             .await?;
 
@@ -225,6 +226,7 @@ async fn create_pr(client: &Octocrab, pkg: String, after: String) -> Result<(u64
             .arg("config")
             .arg("user.name")
             .arg("AOSC Maintainers")
+            .current_dir(&path)
             .output()
             .await?;
     }
