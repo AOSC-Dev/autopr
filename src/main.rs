@@ -151,14 +151,10 @@ async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Resu
         return Ok(());
     }
 
-    let lock = ABBS_REPO_LOCK.lock().await;
-
-    let res = fetch_pkgs_updates(&state.client, state.lines, &state.github_client).await;
-
-    drop(lock);
-
-    info!("{res:?}");
-    res?;
+    tokio::spawn(async move {
+        let res = fetch_pkgs_updates(&state.client, state.lines, &state.github_client).await;
+        info!("{res:?}");
+    });
 
     Ok(())
 }
@@ -173,6 +169,8 @@ async fn fetch_pkgs_updates(
     lines: Vec<String>,
     octoctab: &Octocrab,
 ) -> Result<()> {
+    let lock = ABBS_REPO_LOCK.lock().await;
+
     let json = client
         .get("https://raw.githubusercontent.com/AOSC-Dev/anicca/main/pkgsupdate.json")
         .send()
@@ -198,6 +196,8 @@ async fn fetch_pkgs_updates(
             }
         }
     }
+
+    drop(lock);
 
     Ok(())
 }
