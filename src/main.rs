@@ -179,7 +179,8 @@ async fn fetch_pkgs_updates(
             None => continue,
             Some(x) => {
                 info!("Creating Pull Request: {}", x.name);
-                create_pr(octoctab, x.name.clone()).await?;
+                let pr = create_pr(octoctab, x.name.clone()).await?;
+                info!("Pull Request created: {}: {}", pr.0, pr.1);
             }
         }
     }
@@ -187,7 +188,7 @@ async fn fetch_pkgs_updates(
     Ok(())
 }
 
-async fn create_pr(client: &Octocrab, pkg: String) -> Result<()> {
+async fn create_pr(client: &Octocrab, pkg: String) -> Result<(u64, String)> {
     let path = Path::new("./aosc-os-abbs").to_path_buf();
     if !path.is_dir() {
         Command::new("git")
@@ -198,7 +199,7 @@ async fn create_pr(client: &Octocrab, pkg: String) -> Result<()> {
     }
 
     let find_update = find_update_and_update_checksum(pkg, path.clone()).await?;
-    open_pr(
+    let pr = open_pr(
         OpenPRRequest {
             git_ref: find_update.branch,
             abbs_path: path,
@@ -211,7 +212,7 @@ async fn create_pr(client: &Octocrab, pkg: String) -> Result<()> {
     )
     .await?;
 
-    Ok(())
+    Ok(pr)
 }
 
 pub struct FindUpdate {
@@ -224,7 +225,7 @@ pub async fn find_update_and_update_checksum(
     pkg: String,
     abbs_path: PathBuf,
 ) -> Result<FindUpdate> {
-    let _lock = ABBS_REPO_LOCK.lock().await;
+    let lock = ABBS_REPO_LOCK.lock().await;
 
     // switch to stable branch
     update_abbs("stable", &abbs_path).await?;
@@ -339,7 +340,7 @@ pub async fn find_update_and_update_checksum(
                 .output()
                 .await?;
 
-            let output = Command::new("git")
+            Command::new("git")
                 .arg("commit")
                 .arg("-m")
                 .arg(&title)
@@ -357,6 +358,8 @@ pub async fn find_update_and_update_checksum(
                 .output()
                 .await?;
 
+            drop(lock);
+
             return Ok(FindUpdate {
                 package: pkg.to_string(),
                 branch,
@@ -364,6 +367,8 @@ pub async fn find_update_and_update_checksum(
             });
         }
     }
+
+    drop(lock);
 
     bail!("{pkg} has no update")
 }
