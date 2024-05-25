@@ -78,7 +78,6 @@ async fn main() -> Result<()> {
             .init();
     }
 
-    
     let webhook_uri = std::env::var("autopr_webhook")?;
     let secret = std::env::var("autopr_secret")?;
     let github_token = std::env::var("github_token")?;
@@ -128,7 +127,10 @@ impl From<eyre::Error> for EyreError {
 
 async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Result<(), EyreError> {
     info!("Github webhook got message: {json:#?}");
-    fetch_pkgs_updates(&state.client, state.lines, &state.github_client).await?;
+    let res = fetch_pkgs_updates(&state.client, state.lines, &state.github_client).await;
+
+    info!("{res:?}");
+    res?;
 
     Ok(())
 }
@@ -155,6 +157,7 @@ async fn fetch_pkgs_updates(
         match entry {
             None => continue,
             Some(x) => {
+                info!("Creating Pull Request: {}", x.name);
                 create_pr(octoctab, x.name.clone()).await?;
             }
         }
