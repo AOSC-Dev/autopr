@@ -204,8 +204,9 @@ async fn fetch_pkgs_updates(
                 info!("Creating Pull Request: {}", x.name);
                 let pr = create_pr(octoctab, x.name.clone(), x.after.clone()).await;
 
-                if let Ok(pr) = pr {
-                    info!("Pull Request created: {}: {}", pr.0, pr.1);
+                match pr {
+                    Ok((num, url)) => info!("Pull Request created: {}: {}", num, url),
+                    Err(e) => warn!("Failed to create pr{e}"),
                 }
             }
         }
