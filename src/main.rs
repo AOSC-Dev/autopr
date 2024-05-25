@@ -3,7 +3,7 @@ mod worker;
 use std::{env::current_dir, path::Path};
 
 use axum::{extract::State, response::IntoResponse, routing::post, Json, Router};
-use eyre::{bail, eyre, Result};
+use eyre::{bail, Result};
 
 use octocrab::{params, Octocrab};
 use once_cell::sync::Lazy;

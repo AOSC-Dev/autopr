@@ -61,7 +61,7 @@ pub async fn find_update_and_update_checksum(
     let status = BufReader::new(&*status.stdout).lines().next_line().await;
 
     if let Ok(Some(status)) = status {
-        let split_status = status.trim().split_once(" ");
+        let split_status = status.trim().split_once(' ');
         if let Some((status, _)) = split_status {
             if status != "M" {
                 bail!("{pkg} has no update");
@@ -394,13 +394,10 @@ pub fn read_ab_with_apml(file: &str) -> HashMap<String, String> {
         context.insert(i.to_string(), "".to_string());
     }
 
-    match abbs_meta_apml::parse(file, &mut context).map_err(|e| {
-        let e: Vec<String> = e.iter().map(|e| e.to_string()).collect();
-        eyre!(e.join("; "))
-    }) {
+    match abbs_meta_apml::parse(file, &mut context) {
         Ok(()) => (),
         Err(e) => {
-            error!("{e}, buildit will use fallback method to parse file");
+            error!("{e:?}, buildit will use fallback method to parse file");
             for line in file.split('\n') {
                 let stmt = line.split_once('=');
                 if let Some((name, value)) = stmt {
@@ -621,7 +618,7 @@ pub fn resolve_packages(pkgs: &[String], p: &Path) -> Result<Vec<String>> {
 }
 
 pub fn strip_modifiers(pkg: &str) -> &str {
-    match pkg.split_once(":") {
+    match pkg.split_once(':') {
         Some((prefix, _suffix)) => prefix,
         None => pkg,
     }
