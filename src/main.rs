@@ -18,7 +18,6 @@ use octocrab::{models::pulls::PullRequest, params, Octocrab};
 use once_cell::sync::Lazy;
 use reqwest::{Client, ClientBuilder, StatusCode};
 use serde::Deserialize;
-use serde_json::Value;
 use tokio::{
     fs,
     io::{AsyncBufReadExt, BufReader},
@@ -43,6 +42,7 @@ struct AppState {
     lines: Vec<String>,
     client: Client,
     github_client: octocrab::Octocrab,
+    bot_name: String
 }
 
 pub static ABBS_REPO_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
@@ -82,6 +82,7 @@ async fn main() -> Result<()> {
     let secret = std::env::var("autopr_secret")?;
     let github_token = std::env::var("github_token")?;
     let update_list = fs::File::open(current_dir()?.join("update_list")).await?;
+    let bot_name = std::env::var("bot_name")?;
     let mut f_lines = BufReader::new(update_list).lines();
     let mut lines = vec![];
 
@@ -101,6 +102,7 @@ async fn main() -> Result<()> {
             lines,
             client,
             github_client,
+            bot_name
         });
 
     let listener = tokio::net::TcpListener::bind(webhook_uri).await?;
@@ -125,8 +127,27 @@ impl From<eyre::Error> for EyreError {
     }
 }
 
-async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Result<(), EyreError> {
+#[derive(Deserialize, Debug)]
+struct Webhook {
+    pusher: Option<Pusher>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Pusher {
+    name: Option<String>,
+    _email: Option<String>,
+}
+
+async fn handler(State(state): State<AppState>, Json(json): Json<Webhook>) -> Result<(), EyreError> {
     info!("Github webhook got message: {json:#?}");
+
+    let pusher_name = json.pusher.and_then(|x| x.name);
+
+    if pusher_name == Some(state.bot_name) {
+        info!("Ignoring webhook from self");
+        return Ok(());
+    }
+
     let res = fetch_pkgs_updates(&state.client, state.lines, &state.github_client).await;
 
     info!("{res:?}");
@@ -317,7 +338,8 @@ pub async fn find_update_and_update_checksum(
                 .current_dir(&abbs_path)
                 .output()
                 .await?;
-            Command::new("git")
+
+            let output = Command::new("git")
                 .arg("commit")
                 .arg("-m")
                 .arg(&title)
