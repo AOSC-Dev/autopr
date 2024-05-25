@@ -25,7 +25,8 @@ use tokio::{
     process::{self, Command},
     task::spawn_blocking,
 };
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, level_filters::LevelFilter, warn};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 use walkdir::WalkDir;
 
 use std::io::BufRead as StdBufRead;
@@ -49,6 +50,35 @@ pub static ABBS_REPO_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sy
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
+    let env_log = EnvFilter::try_from_default_env();
+
+    if let Ok(filter) = env_log {
+        tracing_subscriber::registry()
+            .with(
+                fmt::layer()
+                    .event_format(
+                        tracing_subscriber::fmt::format()
+                            .with_file(true)
+                            .with_line_number(true),
+                    )
+                    .with_filter(filter),
+            )
+            .init();
+    } else {
+        tracing_subscriber::registry()
+            .with(
+                fmt::layer()
+                    .event_format(
+                        tracing_subscriber::fmt::format()
+                            .with_file(true)
+                            .with_line_number(true),
+                    )
+                    .with_filter(LevelFilter::INFO),
+            )
+            .init();
+    }
+
+    
     let webhook_uri = std::env::var("autopr_webhook")?;
     let secret = std::env::var("autopr_secret")?;
     let github_token = std::env::var("github_token")?;

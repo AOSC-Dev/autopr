@@ -18,3 +18,4 @@ walkdir = "2.5.0"
 abbs-meta-apml = { git = "https://github.com/AOSC-Dev/abbs-meta-rs", package = "abbs-meta-apml", rev = "4a592937b44e8bb93103edd34eff384169a3248a" }
 fancy-regex = "0.13"
 gix = { version = "0.63", default-features = false, features = ["revision"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
