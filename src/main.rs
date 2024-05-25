@@ -162,6 +162,7 @@ async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Resu
 #[derive(Deserialize)]
 struct PkgUpdate {
     name: String,
+    after: String,
 }
 
 async fn fetch_pkgs_updates(
@@ -184,12 +185,10 @@ async fn fetch_pkgs_updates(
             None => {
                 info!("Package has no update: {}", i);
                 continue;
-            },
+            }
             Some(x) => {
                 info!("Creating Pull Request: {}", x.name);
-                let pr = create_pr(octoctab, x.name.clone()).await;
-
-                dbg!(&pr);
+                let pr = create_pr(octoctab, x.name.clone(), x.after.clone()).await;
 
                 if let Ok(pr) = pr {
                     info!("Pull Request created: {}: {}", pr.0, pr.1);
@@ -203,7 +202,7 @@ async fn fetch_pkgs_updates(
     Ok(())
 }
 
-async fn create_pr(client: &Octocrab, pkg: String) -> Result<(u64, String)> {
+async fn create_pr(client: &Octocrab, pkg: String, after: String) -> Result<(u64, String)> {
     let path = Path::new("./aosc-os-abbs").to_path_buf();
     if !path.is_dir() {
         Command::new("git")
@@ -211,6 +210,22 @@ async fn create_pr(client: &Octocrab, pkg: String) -> Result<(u64, String)> {
             .arg("git@github.com:aosc-dev/aosc-os-abbs")
             .output()
             .await?;
+    }
+
+    let page = client
+        .pulls("AOSC-Dev", "aosc-os-abbs")
+        .list()
+        // Optional Parameters
+        .state(params::State::Open)
+        .base("stable")
+        // Send the request
+        .send()
+        .await?;
+
+    for old_pr in page.items {
+        if old_pr.title == format!("{}: update to {}", pkg, after).into() {
+            bail!("PR exists");
+        }
     }
 
     let find_update = find_update_and_update_checksum(pkg, path.clone()).await?;
