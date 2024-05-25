@@ -18,6 +18,7 @@ use octocrab::{models::pulls::PullRequest, params, Octocrab};
 use once_cell::sync::Lazy;
 use reqwest::{Client, ClientBuilder, StatusCode};
 use serde::Deserialize;
+use serde_json::Value;
 use tokio::{
     fs,
     io::{AsyncBufReadExt, BufReader},
@@ -42,7 +43,7 @@ struct AppState {
     lines: Vec<String>,
     client: Client,
     github_client: octocrab::Octocrab,
-    bot_name: String
+    bot_name: String,
 }
 
 pub static ABBS_REPO_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
@@ -102,7 +103,7 @@ async fn main() -> Result<()> {
             lines,
             client,
             github_client,
-            bot_name
+            bot_name,
         });
 
     let listener = tokio::net::TcpListener::bind(webhook_uri).await?;
@@ -138,8 +139,10 @@ struct Pusher {
     _email: Option<String>,
 }
 
-async fn handler(State(state): State<AppState>, Json(json): Json<Webhook>) -> Result<(), EyreError> {
+async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Result<(), EyreError> {
     info!("Github webhook got message: {json:#?}");
+
+    let json: Webhook = serde_json::from_value(json).map_err(|e| eyre!(e))?;
 
     let pusher_name = json.pusher.and_then(|x| x.name);
 
@@ -176,7 +179,10 @@ async fn fetch_pkgs_updates(
     for i in lines {
         let entry = json.iter().find(|x| x.name == i);
         match entry {
-            None => continue,
+            None => {
+                info!("Package has no update: {}", i);
+                continue;
+            },
             Some(x) => {
                 info!("Creating Pull Request: {}", x.name);
                 let pr = create_pr(octoctab, x.name.clone()).await?;
