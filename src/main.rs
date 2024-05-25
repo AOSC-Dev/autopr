@@ -101,13 +101,20 @@ struct EyreError {
 
 impl IntoResponse for EyreError {
     fn into_response(self) -> axum::response::Response {
-        (StatusCode::EXPECTATION_FAILED, self.err.to_string()).into_response()
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Something went wrong: {}", self.err),
+        )
+            .into_response()
     }
 }
 
-impl From<eyre::Error> for EyreError {
-    fn from(err: eyre::Error) -> Self {
-        EyreError { err }
+impl<E> From<E> for EyreError
+where
+    E: Into<eyre::Error>,
+{
+    fn from(err: E) -> Self {
+        EyreError { err: err.into() }
     }
 }
 
@@ -131,7 +138,7 @@ struct WebhookRepo {
 async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Result<(), EyreError> {
     info!("Github webhook got message: {json:#?}");
 
-    let json: Webhook = serde_json::from_value(json).map_err(|e| eyre!(e))?;
+    let json: Webhook = serde_json::from_value(json)?;
 
     let pusher_name = json.pusher.and_then(|x| x.name);
     let clone_url = json.repository.and_then(|x| x.clone_url);
