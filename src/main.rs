@@ -191,8 +191,9 @@ async fn fetch_pkgs_updates(
 
                 dbg!(&pr);
 
-                let pr = pr?;
-                info!("Pull Request created: {}: {}", pr.0, pr.1);
+                if let Ok(pr) = pr {
+                    info!("Pull Request created: {}: {}", pr.0, pr.1);
+                }
             }
         }
     }
@@ -971,7 +972,7 @@ pub fn get_repo(path: &Path) -> Result<Repository> {
     Ok(repository)
 }
 
-async fn open_pr_inner(pr: OpenPR<'_>, crab: &Octocrab) -> Result<PullRequest, octocrab::Error> {
+async fn open_pr_inner(pr: OpenPR<'_>, crab: &Octocrab) -> Result<PullRequest> {
     let OpenPR {
         title,
         head,
@@ -1013,24 +1014,7 @@ async fn open_pr_inner(pr: OpenPR<'_>, crab: &Octocrab) -> Result<PullRequest, o
 
     for old_pr in page.items {
         if old_pr.head.ref_field == head {
-            // double check
-
-            // update existing pr
-            let pr = crab
-                .pulls("AOSC-Dev", "aosc-os-abbs")
-                .update(old_pr.number)
-                .title(title)
-                .body(&body)
-                .send()
-                .await?;
-
-            if !tags.is_empty() {
-                crab.issues("AOSC-Dev", "aosc-os-abbs")
-                    .add_labels(pr.number, &tags)
-                    .await?;
-            }
-
-            return Ok(pr);
+            bail!("PR exists");
         }
     }
 
