@@ -151,7 +151,11 @@ async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Resu
         return Ok(());
     }
 
+    let lock = ABBS_REPO_LOCK.lock().await;
+
     let res = fetch_pkgs_updates(&state.client, state.lines, &state.github_client).await;
+
+    drop(lock);
 
     info!("{res:?}");
     res?;
@@ -235,8 +239,6 @@ pub async fn find_update_and_update_checksum(
     pkg: String,
     abbs_path: PathBuf,
 ) -> Result<FindUpdate> {
-    let lock = ABBS_REPO_LOCK.lock().await;
-
     // switch to stable branch
     update_abbs("stable", &abbs_path).await?;
 
@@ -368,8 +370,6 @@ pub async fn find_update_and_update_checksum(
                 .output()
                 .await?;
 
-            drop(lock);
-
             return Ok(FindUpdate {
                 package: pkg.to_string(),
                 branch,
@@ -377,8 +377,6 @@ pub async fn find_update_and_update_checksum(
             });
         }
     }
-
-    drop(lock);
 
     bail!("{pkg} has no update")
 }
