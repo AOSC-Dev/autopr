@@ -8,7 +8,7 @@ use eyre::{bail, Result};
 use octocrab::{params, Octocrab};
 use once_cell::sync::Lazy;
 use reqwest::{Client, ClientBuilder, StatusCode};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::{
     fs,
@@ -29,6 +29,7 @@ struct AppState {
 }
 
 pub static ABBS_REPO_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
+const NEW_PR_URL: &str = "https://buildit.aosc.io/api/pipeline/new_pr";
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -193,7 +194,15 @@ async fn fetch_pkgs_updates(
                 let pr = create_pr(octoctab, x.name.clone(), x.after.clone()).await;
 
                 match pr {
-                    Ok((num, url)) => info!("Pull Request created: {}: {}", num, url),
+                    Ok((num, url)) => {
+                        info!("Pull Request created: {}: {}", num, url);
+                        match build_pr(client, num).await {
+                            Ok(()) => {
+                                info!("PR pipeline is created.");
+                            }
+                            Err(e) => warn!("Failed to create pr pipeline: {e}"),
+                        }
+                    }
                     Err(e) => warn!("Failed to create pr: {e}"),
                 }
             }
@@ -262,4 +271,22 @@ async fn create_pr(client: &Octocrab, pkg: String, after: String) -> Result<(u64
     .await?;
 
     Ok(pr)
+}
+
+#[derive(Serialize)]
+struct PrRequest {
+    id: u64,
+}
+
+async fn build_pr(client: &Client, num: u64) -> Result<()> {
+    info!("Creating Pull Request pipeline: {}", num);
+
+    client
+        .post(NEW_PR_URL)
+        .json(&PrRequest { id: num })
+        .send()
+        .await?
+        .error_for_status()?;
+
+    Ok(())
 }
