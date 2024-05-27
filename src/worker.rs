@@ -11,7 +11,7 @@ use std::{
     collections::{HashMap, HashSet},
     io::{BufRead as StdBufRead, BufReader as StdBufReader},
     path::{Path, PathBuf},
-    process::Output,
+    process::Output, sync::Arc,
 };
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
@@ -433,7 +433,7 @@ pub struct OpenPRRequest<'a> {
 
 pub async fn open_pr(
     openpr_request: OpenPRRequest<'_>,
-    client: &Octocrab,
+    client: Arc<Octocrab>,
 ) -> Result<(u64, String)> {
     let OpenPRRequest {
         git_ref,
@@ -766,7 +766,7 @@ pub fn get_repo(path: &Path) -> Result<Repository> {
     Ok(repository)
 }
 
-async fn open_pr_inner(pr: OpenPR<'_>, crab: &Octocrab) -> Result<PullRequest> {
+async fn open_pr_inner(pr: OpenPR<'_>, crab: Arc<Octocrab>) -> Result<PullRequest> {
     let OpenPR {
         title,
         head,

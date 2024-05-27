@@ -1,6 +1,6 @@
 mod worker;
 
-use std::{env::current_dir, path::Path};
+use std::{env::current_dir, path::Path, sync::Arc};
 
 use axum::{extract::State, response::IntoResponse, routing::post, Json, Router};
 use eyre::{bail, Result};
@@ -23,7 +23,7 @@ use worker::{find_update_and_update_checksum, open_pr, OpenPRRequest};
 struct AppState {
     lines: Vec<String>,
     client: Client,
-    github_client: octocrab::Octocrab,
+    github_client: Arc<octocrab::Octocrab>,
     bot_name: String,
     repo_url: String,
 }
@@ -76,9 +76,11 @@ async fn main() -> Result<()> {
     }
 
     let client = ClientBuilder::new().user_agent("autopr").build()?;
-    let github_client = octocrab::Octocrab::builder()
-        .user_access_token(github_token)
-        .build()?;
+    let github_client = Arc::new(
+        octocrab::Octocrab::builder()
+            .user_access_token(github_token)
+            .build()?,
+    );
 
     let app = Router::new()
         .route("/", post(handler))
@@ -155,7 +157,7 @@ async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Resu
     }
 
     tokio::spawn(async move {
-        let res = fetch_pkgs_updates(&state.client, state.lines, &state.github_client).await;
+        let res = fetch_pkgs_updates(&state.client, state.lines, state.github_client).await;
         info!("{res:?}");
     });
 
@@ -171,7 +173,7 @@ struct PkgUpdate {
 async fn fetch_pkgs_updates(
     client: &Client,
     lines: Vec<String>,
-    octoctab: &Octocrab,
+    octoctab: Arc<Octocrab>,
 ) -> Result<()> {
     let lock = ABBS_REPO_LOCK.lock().await;
 
@@ -191,7 +193,8 @@ async fn fetch_pkgs_updates(
             }
             Some(x) => {
                 info!("Creating Pull Request: {}", x.name);
-                let pr = create_pr(octoctab, x.name.clone(), x.after.clone()).await;
+                let octocrab_shared = octoctab.clone();
+                let pr = create_pr(octoctab.clone(), x.name.clone(), x.after.clone()).await;
 
                 match pr {
                     Ok((num, url)) => {
@@ -203,7 +206,24 @@ async fn fetch_pkgs_updates(
                             Err(e) => warn!("Failed to create pr pipeline: {e}"),
                         }
                     }
-                    Err(e) => warn!("Failed to create pr: {e}"),
+                    Err(e) => {
+                        warn!("Failed to create pr: {e}");
+                        let e = e.to_string();
+                        tokio::spawn(async move {
+                            if let Err(e) = create_issue(
+                                octocrab_shared,
+                                &e,
+                                &format!(
+                                    "autopr: failed to create pull request for package: {}",
+                                    i
+                                ),
+                            )
+                            .await
+                            {
+                                warn!("{e}");
+                            }
+                        });
+                    }
                 }
             }
         }
@@ -214,7 +234,7 @@ async fn fetch_pkgs_updates(
     Ok(())
 }
 
-async fn create_pr(client: &Octocrab, pkg: String, after: String) -> Result<(u64, String)> {
+async fn create_pr(client: Arc<Octocrab>, pkg: String, after: String) -> Result<(u64, String)> {
     let path = Path::new("./aosc-os-abbs").to_path_buf();
     if !path.is_dir() {
         Command::new("git")
@@ -289,4 +309,32 @@ async fn build_pr(client: &Client, num: u64) -> Result<()> {
         .error_for_status()?;
 
     Ok(())
+}
+
+async fn create_issue(octoctab: Arc<Octocrab>, body: &str, title: &str) -> Result<u64> {
+    info!("Creating issue: {}", title);
+
+    let page = octoctab
+        .issues("AOSC-Dev", "aosc-os-abbs")
+        .list()
+        // Optional Parameters
+        .state(params::State::Open)
+        // Send the request
+        .send()
+        .await?;
+
+    for old_issue in page.items {
+        if old_issue.title == title {
+            bail!("issue exists");
+        }
+    }
+
+    let issue = octoctab
+        .issues("AOSC-Dev", "aosc-os-abbs")
+        .create(title)
+        .body(body)
+        .send()
+        .await?;
+
+    Ok(issue.number)
 }
