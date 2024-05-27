@@ -209,20 +209,22 @@ async fn fetch_pkgs_updates(
                     Err(e) => {
                         warn!("Failed to create pr: {e}");
                         let e = e.to_string();
-                        tokio::spawn(async move {
-                            if let Err(e) = create_issue(
-                                octocrab_shared,
-                                &e,
-                                &format!(
-                                    "autopr: failed to create pull request for package: {}",
-                                    i
-                                ),
-                            )
-                            .await
-                            {
-                                warn!("{e}");
-                            }
-                        });
+                        if e != "PR exists" {
+                            tokio::spawn(async move {
+                                if let Err(e) = create_issue(
+                                    octocrab_shared,
+                                    &e,
+                                    &format!(
+                                        "autopr: failed to create pull request for package: {}",
+                                        i
+                                    ),
+                                )
+                                .await
+                                {
+                                    warn!("{e}");
+                                }
+                            });
+                        }
                     }
                 }
             }
