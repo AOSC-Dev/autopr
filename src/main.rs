@@ -297,7 +297,7 @@ async fn create_pr(client: Arc<Octocrab>, pkg: String, after: String) -> Result<
 
 #[derive(Serialize)]
 struct PrRequest {
-    id: u64,
+    pr: u64,
 }
 
 async fn build_pr(client: &Client, num: u64) -> Result<()> {
@@ -305,7 +305,7 @@ async fn build_pr(client: &Client, num: u64) -> Result<()> {
 
     client
         .post(NEW_PR_URL)
-        .json(&PrRequest { id: num })
+        .json(&PrRequest { pr: num })
         .send()
         .await?
         .error_for_status()?;
