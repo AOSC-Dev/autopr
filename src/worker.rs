@@ -12,7 +12,8 @@ use std::{
     collections::{HashMap, HashSet},
     io::{BufRead as StdBufRead, BufReader as StdBufReader},
     path::{Path, PathBuf},
-    process::Output, sync::Arc,
+    process::Output,
+    sync::Arc,
 };
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
@@ -69,18 +70,14 @@ pub async fn find_update_and_update_checksum(
             }
 
             let absolute_abbs_path = std::fs::canonicalize(&abbs_path)?;
-            let abbs_path_parent = if let Some(parent) = absolute_abbs_path.parent() {
-                parent
-            } else {
-                bail!("Bad ABBS path");
-            };
+
+            let pkgc = pkg.clone();
+            let pkgcc = pkg.clone();
 
             info!("Writting new checksum ...");
-            let res = write_new_spec(absolute_abbs_path, pkg_shared).await;
+            let res = write_new_spec(absolute_abbs_path, pkgc).await;
 
-
-
-            if !output.status.success() {
+            if let Err(e) = res {
                 // cleanup repo
                 Command::new("git")
                     .arg("reset")
@@ -90,17 +87,13 @@ pub async fn find_update_and_update_checksum(
                     .output()
                     .await?;
 
-                bail!(
-                    "Failed to run acbs-build to update checksum: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                );
+                bail!("Failed to run acbs-build to update checksum: {}", e);
             }
 
-            let pkgc = pkg.clone();
             let abbs_path_c = abbs_path.clone();
 
             let ver = spawn_blocking(move || {
-                find_version_by_packages(&[pkgc], &abbs_path_c)
+                find_version_by_packages(&[pkgcc], &abbs_path_c)
                     .into_iter()
                     .next()
             })
@@ -240,7 +233,6 @@ async fn acbs_build_gw(pkg_shared: &str, abbs_path_shared: &Path) -> Result<()> 
 
     Ok(())
 }
-
 
 pub async fn update_abbs<P: AsRef<Path>>(git_ref: &str, abbs_path: P) -> Result<()> {
     info!("Running git checkout -b stable ...");
