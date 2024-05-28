@@ -1,3 +1,4 @@
+use abbs_update_checksum_core::{get_new_spec, ParseErrors};
 use eyre::{bail, eyre, Context, OptionExt, Result};
 use fancy_regex::Regex;
 use gix::{
@@ -73,22 +74,11 @@ pub async fn find_update_and_update_checksum(
             } else {
                 bail!("Bad ABBS path");
             };
-            info!("Running acbs-build ...");
-            let output = Command::new("acbs-build")
-                .arg("-gw")
-                .arg(&pkg)
-                .arg("--log-dir")
-                .arg(abbs_path_parent.join("acbs-log"))
-                .arg("--cache-dir")
-                .arg(abbs_path_parent.join("acbs-cache"))
-                .arg("--temp-dir")
-                .arg(abbs_path_parent.join("acbs-temp"))
-                .arg("--tree-dir")
-                .arg(absolute_abbs_path)
-                .current_dir(&abbs_path)
-                .output()
-                .await?;
-            print_stdout_and_stderr(&output);
+
+            info!("Writting new checksum ...");
+            let res = write_new_spec(absolute_abbs_path, pkg_shared).await;
+
+
 
             if !output.status.success() {
                 // cleanup repo
@@ -178,6 +168,79 @@ pub async fn find_update_and_update_checksum(
 
     bail!("{pkg} has no update")
 }
+
+async fn write_new_spec(abbs_path: PathBuf, pkg: String) -> Result<()> {
+    let pkg_shared = pkg.clone();
+    let abbs_path_shared = abbs_path.clone();
+    let (mut spec, p) = spawn_blocking(move || get_spec(&abbs_path_shared, &pkg_shared)).await??;
+
+    for i in 1..=5 {
+        match get_new_spec(&mut spec).await {
+            Ok(()) => {
+                if i > 1 {
+                    info!("({i}/5) Retrying to get new spec...");
+                }
+
+                tokio::fs::write(p, spec).await?;
+                return Ok(());
+            }
+            Err(e) => {
+                if let Some(e) = e.downcast_ref::<ParseErrors>() {
+                    warn!("{e}, try use acbs-build fallback to get new checksum ...");
+                    acbs_build_gw(&pkg, &abbs_path).await?;
+                } else {
+                    error!("Failed to get new spec: {e}");
+                    if i == 5 {
+                        bail!("{e}");
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub fn get_spec(path: &Path, pkgname: &str) -> Result<(String, PathBuf)> {
+    let mut spec = None;
+    for_each_abbs(path, |pkg, p| {
+        if pkgname == pkg {
+            let p = p.join("spec");
+            spec = std::fs::read_to_string(&p).ok().and_then(|x| Some((x, p)));
+        }
+    });
+
+    Ok(spec.ok_or_eyre(format!("{pkgname} does not exist"))?)
+}
+
+async fn acbs_build_gw(pkg_shared: &str, abbs_path_shared: &Path) -> Result<()> {
+    let output = Command::new("acbs-build")
+        .arg("-gw")
+        .arg(pkg_shared)
+        .arg("--log-dir")
+        .arg(&abbs_path_shared.join("acbs-log"))
+        .arg("--cache-dir")
+        .arg(&abbs_path_shared.join("acbs-cache"))
+        .arg("--temp-dir")
+        .arg(&abbs_path_shared.join("acbs-temp"))
+        .arg("--tree-dir")
+        .arg(abbs_path_shared)
+        .current_dir(abbs_path_shared)
+        .output()
+        .await?;
+
+    print_stdout_and_stderr(&output);
+
+    if !output.status.success() {
+        bail!(
+            "Failed to run acbs-build to update checksum: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    Ok(())
+}
+
 
 pub async fn update_abbs<P: AsRef<Path>>(git_ref: &str, abbs_path: P) -> Result<()> {
     info!("Running git checkout -b stable ...");

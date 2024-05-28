@@ -23,7 +23,7 @@ use worker::{find_update_and_update_checksum, open_pr, OpenPRRequest};
 struct AppState {
     lines: Vec<String>,
     client: Client,
-    github_client: Arc<octocrab::Octocrab>,
+    github_client: Arc<Octocrab>,
     bot_name: String,
     repo_url: String,
 }
@@ -77,7 +77,7 @@ async fn main() -> Result<()> {
 
     let client = ClientBuilder::new().user_agent("autopr").build()?;
     let github_client = Arc::new(
-        octocrab::Octocrab::builder()
+        Octocrab::builder()
             .user_access_token(github_token)
             .build()?,
     );
