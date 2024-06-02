@@ -28,7 +28,7 @@ struct AppState {
     update_list: PathBuf,
     client: Client,
     github_client: Arc<Octocrab>,
-    bot_name: String,
+    bot_name: Arc<String>,
     repo_url: String,
 }
 
@@ -70,7 +70,7 @@ async fn main() -> Result<()> {
     // let secret = std::env::var("autopr_secret")?;
     let github_token = std::env::var("github_token")?;
     let update_list = current_dir()?.join("update_list");
-    let bot_name = std::env::var("bot_name")?;
+    let bot_name = Arc::new(std::env::var("bot_name")?);
 
     let client = ClientBuilder::new().user_agent("autopr").build()?;
     let github_client = Arc::new(
@@ -143,7 +143,7 @@ async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Resu
     let pusher_name = json.pusher.and_then(|x| x.name);
     let clone_url = json.repository.and_then(|x| x.clone_url);
 
-    if pusher_name == Some(state.bot_name) {
+    if pusher_name.as_ref() == Some(&state.bot_name) {
         info!("Ignoring webhook from self");
         return Ok(());
     }
@@ -154,7 +154,13 @@ async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Resu
     }
 
     tokio::spawn(async move {
-        let res = fetch_pkgs_updates(&state.client, state.update_list, state.github_client).await;
+        let res = fetch_pkgs_updates(
+            &state.client,
+            state.update_list,
+            state.github_client,
+            state.bot_name,
+        )
+        .await;
         info!("{res:?}");
     });
 
@@ -171,6 +177,7 @@ async fn fetch_pkgs_updates(
     client: &Client,
     update_list: PathBuf,
     octoctab: Arc<Octocrab>,
+    bot_name: Arc<String>,
 ) -> Result<()> {
     let lock = ABBS_REPO_LOCK.lock().await;
 
@@ -220,6 +227,7 @@ async fn fetch_pkgs_updates(
                         warn!("Failed to create pr: {e}");
                         let e = e.to_string();
                         if e != "PR exists" {
+                            let bot_name = bot_name.clone();
                             tokio::spawn(async move {
                                 if let Err(e) = create_issue(
                                     octocrab_shared,
@@ -228,6 +236,7 @@ async fn fetch_pkgs_updates(
                                         "autopr: failed to create pull request for package: {}",
                                         i
                                     ),
+                                    bot_name
                                 )
                                 .await
                                 {
@@ -324,13 +333,19 @@ async fn build_pr(client: &Client, num: u64) -> Result<()> {
     Ok(())
 }
 
-async fn create_issue(octoctab: Arc<Octocrab>, body: &str, title: &str) -> Result<u64> {
+async fn create_issue(
+    octoctab: Arc<Octocrab>,
+    body: &str,
+    title: &str,
+    bot_name: Arc<String>,
+) -> Result<u64> {
     info!("Creating issue: {}", title);
 
     let page = octoctab
         .issues("AOSC-Dev", "aosc-os-abbs")
         .list()
         .per_page(100)
+        .creator(&*bot_name)
         // Optional Parameters
         .state(params::State::Open)
         // Send the request
@@ -351,7 +366,8 @@ async fn create_issue(octoctab: Arc<Octocrab>, body: &str, title: &str) -> Resul
         .await?;
 
     // Add autopr
-    octoctab.issues("AOSC-Dev", "aosc-os-abbs")
+    octoctab
+        .issues("AOSC-Dev", "aosc-os-abbs")
         .add_labels(issue.number, &["autopr".to_string()])
         .await?;
 
