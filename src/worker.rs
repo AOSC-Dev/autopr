@@ -304,12 +304,10 @@ pub async fn update_abbs<P: AsRef<Path>>(git_ref: &str, abbs_path: P) -> Result<
 
     print_stdout_and_stderr(&output);
 
-    info!("Running git fetch origin {git_ref} ...");
+    info!("Running git fetch ...");
 
     let output = process::Command::new("git")
         .arg("fetch")
-        .arg("origin")
-        .arg(git_ref)
         .current_dir(abbs_path)
         .output()
         .await?;
