@@ -185,6 +185,10 @@ async fn fetch_pkgs_updates(
         .await?;
 
     for i in lines {
+        if i.starts_with("#") {
+            continue;
+        }
+
         let entry = json.iter().find(|x| x.name == i);
         match entry {
             None => {
