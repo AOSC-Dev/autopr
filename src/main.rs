@@ -253,6 +253,7 @@ async fn create_pr(client: Arc<Octocrab>, pkg: String, after: String) -> Result<
         // Optional Parameters
         .state(params::State::Open)
         .base("stable")
+        .per_page(100)
         // Send the request
         .send()
         .await?;
@@ -329,6 +330,7 @@ async fn create_issue(octoctab: Arc<Octocrab>, body: &str, title: &str) -> Resul
     let page = octoctab
         .issues("AOSC-Dev", "aosc-os-abbs")
         .list()
+        .per_page(100)
         // Optional Parameters
         .state(params::State::Open)
         // Send the request
