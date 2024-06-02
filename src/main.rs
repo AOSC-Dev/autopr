@@ -348,5 +348,10 @@ async fn create_issue(octoctab: Arc<Octocrab>, body: &str, title: &str) -> Resul
         .send()
         .await?;
 
+    // Add autopr
+    octoctab.issues("AOSC-Dev", "aosc-os-abbs")
+        .add_labels(issue.number, &["autopr".to_string()])
+        .await?;
+
     Ok(issue.number)
 }

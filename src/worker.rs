@@ -948,6 +948,9 @@ fn auto_add_label(title: &str) -> Vec<String> {
         res.push(i);
     }
 
+    // Add autopr label
+    res.push("autopr".to_string());
+
     res
 }
 
