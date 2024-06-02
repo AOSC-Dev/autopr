@@ -1,6 +1,10 @@
 mod worker;
 
-use std::{env::current_dir, path::Path, sync::Arc};
+use std::{
+    env::current_dir,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use axum::{extract::State, response::IntoResponse, routing::post, Json, Router};
 use eyre::{bail, Result};
@@ -21,7 +25,7 @@ use worker::{find_update_and_update_checksum, open_pr, OpenPRRequest};
 
 #[derive(Clone)]
 struct AppState {
-    lines: Vec<String>,
+    update_list: PathBuf,
     client: Client,
     github_client: Arc<Octocrab>,
     bot_name: String,
@@ -65,15 +69,8 @@ async fn main() -> Result<()> {
     let webhook_uri = std::env::var("autopr_webhook")?;
     // let secret = std::env::var("autopr_secret")?;
     let github_token = std::env::var("github_token")?;
-    let update_list = fs::File::open(current_dir()?.join("update_list")).await?;
+    let update_list = current_dir()?.join("update_list");
     let bot_name = std::env::var("bot_name")?;
-    let mut f_lines = BufReader::new(update_list).lines();
-    let mut lines = vec![];
-
-    while let Some(x) = f_lines.next_line().await? {
-        let line = x.trim().to_string();
-        lines.push(line);
-    }
 
     let client = ClientBuilder::new().user_agent("autopr").build()?;
     let github_client = Arc::new(
@@ -85,7 +82,7 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/", post(handler))
         .with_state(AppState {
-            lines,
+            update_list,
             client,
             github_client,
             bot_name,
@@ -157,7 +154,7 @@ async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Resu
     }
 
     tokio::spawn(async move {
-        let res = fetch_pkgs_updates(&state.client, state.lines, state.github_client).await;
+        let res = fetch_pkgs_updates(&state.client, state.update_list, state.github_client).await;
         info!("{res:?}");
     });
 
@@ -172,7 +169,7 @@ struct PkgUpdate {
 
 async fn fetch_pkgs_updates(
     client: &Client,
-    lines: Vec<String>,
+    update_list: PathBuf,
     octoctab: Arc<Octocrab>,
 ) -> Result<()> {
     let lock = ABBS_REPO_LOCK.lock().await;
@@ -184,7 +181,16 @@ async fn fetch_pkgs_updates(
         .json::<Vec<PkgUpdate>>()
         .await?;
 
-    for i in lines {
+    let update_list = fs::File::open(update_list).await?;
+    let mut f_lines = BufReader::new(update_list).lines();
+    let mut update_list = vec![];
+
+    while let Some(x) = f_lines.next_line().await? {
+        let line = x.trim().to_string();
+        update_list.push(line);
+    }
+
+    for i in update_list {
         if i.starts_with("#") {
             continue;
         }
@@ -241,6 +247,22 @@ async fn fetch_pkgs_updates(
 }
 
 async fn create_pr(client: Arc<Octocrab>, pkg: String, after: String) -> Result<(u64, String)> {
+    let page = client
+        .pulls("AOSC-Dev", "aosc-os-abbs")
+        .list()
+        // Optional Parameters
+        .state(params::State::Open)
+        .base("stable")
+        // Send the request
+        .send()
+        .await?;
+
+    for old_pr in page.items {
+        if old_pr.title == format!("{}: update to {}", pkg, after).into() {
+            bail!("PR exists");
+        }
+    }
+
     let path = Path::new("./aosc-os-abbs").to_path_buf();
     if !path.is_dir() {
         Command::new("git")
@@ -264,22 +286,6 @@ async fn create_pr(client: Arc<Octocrab>, pkg: String, after: String) -> Result<
             .current_dir(&path)
             .output()
             .await?;
-    }
-
-    let page = client
-        .pulls("AOSC-Dev", "aosc-os-abbs")
-        .list()
-        // Optional Parameters
-        .state(params::State::Open)
-        .base("stable")
-        // Send the request
-        .send()
-        .await?;
-
-    for old_pr in page.items {
-        if old_pr.title == format!("{}: update to {}", pkg, after).into() {
-            bail!("PR exists");
-        }
     }
 
     let find_update = find_update_and_update_checksum(pkg, path.clone()).await?;
