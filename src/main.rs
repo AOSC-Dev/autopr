@@ -214,7 +214,7 @@ async fn fetch_pkgs_updates(
                 let pr = create_pr(octoctab.clone(), x.name.clone(), x.after.clone()).await;
 
                 match pr {
-                    Ok((num, url)) => {
+                    Ok(Some((num, url))) => {
                         info!("Pull Request created: {}: {}", num, url);
                         match build_pr(client, num).await {
                             Ok(()) => {
@@ -222,6 +222,9 @@ async fn fetch_pkgs_updates(
                             }
                             Err(e) => warn!("Failed to create pr pipeline: {e}"),
                         }
+                    }
+                    Ok(None) => {
+                        warn!("Branch already exists.");
                     }
                     Err(e) => {
                         warn!("Failed to create pr: {e}");
@@ -255,7 +258,7 @@ async fn fetch_pkgs_updates(
     Ok(())
 }
 
-async fn create_pr(client: Arc<Octocrab>, pkg: String, after: String) -> Result<(u64, String)> {
+async fn create_pr(client: Arc<Octocrab>, pkg: String, after: String) -> Result<Option<(u64, String)>> {
     let page = client
         .pulls("AOSC-Dev", "aosc-os-abbs")
         .list()
@@ -299,20 +302,26 @@ async fn create_pr(client: Arc<Octocrab>, pkg: String, after: String) -> Result<
     }
 
     let find_update = find_update_and_update_checksum(pkg, path.clone()).await?;
-    let pr = open_pr(
-        OpenPRRequest {
-            git_ref: find_update.branch,
-            abbs_path: path,
-            packages: find_update.package,
-            title: find_update.title,
-            tags: None,
-            archs: None,
-        },
-        client,
-    )
-    .await?;
 
-    Ok(pr)
+
+    if let Some(find_update) = find_update {
+        let pr = open_pr(
+            OpenPRRequest {
+                git_ref: find_update.branch,
+                abbs_path: path,
+                packages: find_update.package,
+                title: find_update.title,
+                tags: None,
+                archs: None,
+            },
+            client,
+        )
+        .await?;
+    
+        Ok(Some(pr))
+    } else {
+        Ok(None)
+    }
 }
 
 #[derive(Serialize)]

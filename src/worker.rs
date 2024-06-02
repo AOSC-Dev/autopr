@@ -38,7 +38,7 @@ pub struct FindUpdate {
 pub async fn find_update_and_update_checksum(
     pkg: String,
     abbs_path: PathBuf,
-) -> Result<FindUpdate> {
+) -> Result<Option<FindUpdate>> {
     // switch to stable branch
     update_abbs("stable", &abbs_path).await?;
 
@@ -78,14 +78,7 @@ pub async fn find_update_and_update_checksum(
             let res = write_new_spec(absolute_abbs_path, pkgc).await;
 
             if let Err(e) = res {
-                // cleanup repo
-                Command::new("git")
-                    .arg("reset")
-                    .arg("HEAD")
-                    .arg("--hard")
-                    .current_dir(&abbs_path)
-                    .output()
-                    .await?;
+                git_reset(&abbs_path).await?;
 
                 bail!("Failed to run acbs-build to update checksum: {}", e);
             }
@@ -109,6 +102,36 @@ pub async fn find_update_and_update_checksum(
             }
 
             let branch = format!("{pkg}-{ver}");
+
+            let branches = Command::new("git").arg("branch").output().await?;
+
+            let mut branches_stdout = BufReader::new(&*branches.stdout).lines();
+            let mut branches_stderr = BufReader::new(&*branches.stdout).lines();
+
+            loop {
+                if let Ok(Some(line)) = branches_stdout.next_line().await {
+                    debug!("Exist branch: {line}");
+                    if line.contains(&branch) {
+                        git_reset(&abbs_path).await?;
+                        return Ok(None);
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            loop {
+                if let Ok(Some(line)) = branches_stderr.next_line().await {
+                    debug!("Exist branch: {line}");
+                    if line.contains(&branch) {
+                        git_reset(&abbs_path).await?;
+                        return Ok(None);
+                    }
+                } else {
+                    break;
+                }
+            }
+
             let title = format!("{pkg}: update to {ver}");
 
             Command::new("git")
@@ -146,20 +169,31 @@ pub async fn find_update_and_update_checksum(
                 .arg("--set-upstream")
                 .arg("origin")
                 .arg(&branch)
-                .arg("--force")
                 .current_dir(&abbs_path)
                 .output()
                 .await?;
 
-            return Ok(FindUpdate {
+            return Ok(Some(FindUpdate {
                 package: pkg.to_string(),
                 branch,
                 title,
-            });
+            }));
         }
     }
 
     bail!("{pkg} has no update")
+}
+
+async fn git_reset(abbs_path: &PathBuf) -> Result<()> {
+    Command::new("git")
+        .arg("reset")
+        .arg("HEAD")
+        .arg("--hard")
+        .current_dir(abbs_path)
+        .output()
+        .await?;
+
+    Ok(())
 }
 
 async fn write_new_spec(abbs_path: PathBuf, pkg: String) -> Result<()> {
