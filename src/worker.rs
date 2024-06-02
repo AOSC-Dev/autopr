@@ -882,22 +882,7 @@ async fn open_pr_inner(pr: OpenPR<'_>, crab: Arc<Octocrab>) -> Result<PullReques
 
     // check if there are existing open pr
 
-    let page = crab
-        .pulls("AOSC-Dev", "aosc-os-abbs")
-        .list()
-        // Optional Parameters
-        .state(params::State::Open)
-        .head(format!("AOSC-Dev:{}", head))
-        .base("stable")
-        // Send the request
-        .send()
-        .await?;
-
-    for old_pr in page.items {
-        if old_pr.head.ref_field == head {
-            bail!("PR exists");
-        }
-    }
+    find_old_pr(crab.clone(), head).await?;
 
     // create a new pr
     let pr = crab
@@ -916,6 +901,28 @@ async fn open_pr_inner(pr: OpenPR<'_>, crab: Arc<Octocrab>) -> Result<PullReques
     }
 
     Ok(pr)
+}
+
+pub async fn find_old_pr(crab: Arc<Octocrab>, head: &str) -> Result<()> {
+    let page = crab
+        .pulls("AOSC-Dev", "aosc-os-abbs")
+        .list()
+        // Optional Parameters
+        .state(params::State::Open)
+        .head(format!("AOSC-Dev:{}", head))
+        .base("stable")
+        .per_page(100)
+        // Send the request
+        .send()
+        .await?;
+
+    for old_pr in page.items {
+        if old_pr.head.ref_field == head {
+            bail!("PR exists");
+        }
+    }
+
+    Ok(())
 }
 
 fn auto_add_label(title: &str) -> Vec<String> {

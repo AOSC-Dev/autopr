@@ -21,7 +21,7 @@ use tokio::{
 };
 use tracing::{info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
-use worker::{find_update_and_update_checksum, open_pr, OpenPRRequest};
+use worker::{find_old_pr, find_update_and_update_checksum, open_pr, OpenPRRequest};
 
 #[derive(Clone)]
 struct AppState {
@@ -259,22 +259,8 @@ async fn fetch_pkgs_updates(
 }
 
 async fn create_pr(client: Arc<Octocrab>, pkg: String, after: String) -> Result<Option<(u64, String)>> {
-    let page = client
-        .pulls("AOSC-Dev", "aosc-os-abbs")
-        .list()
-        // Optional Parameters
-        .state(params::State::Open)
-        .base("stable")
-        .per_page(100)
-        // Send the request
-        .send()
-        .await?;
-
-    for old_pr in page.items {
-        if old_pr.title == format!("{}: update to {}", pkg, after).into() {
-            bail!("PR exists");
-        }
-    }
+    let branch = format!("{pkg}-{after}");
+    find_old_pr(client.clone(), &branch).await?;
 
     let path = Path::new("./aosc-os-abbs").to_path_buf();
     if !path.is_dir() {
