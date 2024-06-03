@@ -21,7 +21,7 @@ use tokio::{
 };
 use tracing::{info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
-use worker::{find_old_pr, find_update_and_update_checksum, open_pr, OpenPRRequest};
+use worker::{find_old_pr, find_update_and_update_checksum, old_prs_100, open_pr, OpenPRRequest};
 
 #[derive(Clone)]
 struct AppState {
@@ -137,6 +137,12 @@ struct WebhookRepo {
 
 async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Result<(), EyreError> {
     info!("Github webhook got message: {json:#?}");
+
+    let old_pr = old_prs_100(state.github_client.clone()).await?;
+
+    if old_pr.items.len() >= 100 {
+        info!("Too manys pull request is open. avoid webhook request");
+    }
 
     let json: Webhook = serde_json::from_value(json)?;
 

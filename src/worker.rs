@@ -6,7 +6,7 @@ use gix::{
     sec::{self, trust::DefaultForLevel},
     Repository, ThreadSafeRepository,
 };
-use octocrab::{models::pulls::PullRequest, params, Octocrab};
+use octocrab::{models::pulls::PullRequest, params, Octocrab, Page};
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
@@ -923,6 +923,21 @@ pub async fn find_old_pr(crab: Arc<Octocrab>, head: &str) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub async fn old_prs_100(crab: Arc<Octocrab>) -> Result<Page<PullRequest>> {
+    let page = crab
+        .pulls("AOSC-Dev", "aosc-os-abbs")
+        .list()
+        // Optional Parameters
+        .state(params::State::Open)
+        .base("stable")
+        .per_page(100)
+        // Send the request
+        .send()
+        .await?;
+
+    Ok(page)
 }
 
 fn auto_add_label(title: &str) -> Vec<String> {
