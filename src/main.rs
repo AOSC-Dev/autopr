@@ -140,8 +140,9 @@ async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Resu
 
     let old_pr = old_prs_100(state.github_client.clone()).await?;
 
-    if old_pr.items.len() >= 100 {
+    if old_pr.items.len() == 100 {
         info!("Too manys pull request is open. avoid webhook request");
+        return Ok(())
     }
 
     let json: Webhook = serde_json::from_value(json)?;
