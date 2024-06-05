@@ -308,6 +308,11 @@ pub async fn update_abbs<P: AsRef<Path>>(git_ref: &str, abbs_path: P) -> Result<
 
     let output = process::Command::new("git")
         .arg("fetch")
+        .arg("origin")
+        .arg("+refs/heads/*:refs/heads/*")
+        .arg("--prune")
+        .arg("--tags")
+        .arg("--force")
         .current_dir(abbs_path)
         .output()
         .await?;
