@@ -136,14 +136,7 @@ struct WebhookRepo {
 }
 
 async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Result<(), EyreError> {
-    info!("Github webhook got message: {json:#?}");
-
-    let old_pr = old_prs_100(state.github_client.clone()).await?;
-
-    if old_pr.items.len() == 100 {
-        info!("Too manys pull request is open. avoid webhook request");
-        return Ok(())
-    }
+    info!("Github webhook got message.");
 
     let json: Webhook = serde_json::from_value(json)?;
 
@@ -158,6 +151,13 @@ async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Resu
     if clone_url != Some(state.repo_url) {
         info!("Ignoring webhook from wrong repo");
         return Ok(());
+    }
+
+    let old_pr = old_prs_100(state.github_client.clone()).await?;
+
+    if old_pr.items.len() == 100 {
+        info!("Too manys pull request is open. avoid webhook request");
+        return Ok(())
     }
 
     tokio::spawn(async move {
