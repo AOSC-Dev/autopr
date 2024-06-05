@@ -64,9 +64,11 @@ pub async fn find_update_and_update_checksum(
 
     if let Ok(Some(status)) = status {
         let split_status = status.trim().split_once(' ');
-        if let Some((status, _)) = split_status {
-            if status != "M" {
-                bail!("{pkg} has no update");
+        if let Some((status_porcelain, _)) = split_status {
+            if status_porcelain != "M" {
+                warn!("git status: {}", status_porcelain);
+                warn!("BUG: git status error, so ignore this update");
+                return Ok(None);
             }
 
             let absolute_abbs_path = std::fs::canonicalize(&abbs_path)?;
