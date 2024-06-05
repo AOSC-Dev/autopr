@@ -79,7 +79,6 @@ pub async fn find_update_and_update_checksum(
 
             if let Err(e) = res {
                 git_reset(&abbs_path).await?;
-
                 bail!("Failed to run acbs-build to update checksum: {}", e);
             }
 
@@ -106,7 +105,7 @@ pub async fn find_update_and_update_checksum(
             let branches = Command::new("git").arg("branch").output().await?;
 
             let mut branches_stdout = BufReader::new(&*branches.stdout).lines();
-            let mut branches_stderr = BufReader::new(&*branches.stdout).lines();
+            let mut branches_stderr = BufReader::new(&*branches.stderr).lines();
 
             loop {
                 if let Ok(Some(line)) = branches_stdout.next_line().await {
@@ -312,6 +311,18 @@ pub async fn update_abbs<P: AsRef<Path>>(git_ref: &str, abbs_path: P) -> Result<
         .arg("--prune")
         .arg("--tags")
         .arg("--force")
+        .current_dir(abbs_path)
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        bail!("Failed to fetch origin git-ref: {git_ref}");
+    }
+
+    let output = process::Command::new("git")
+        .arg("fetch")
+        .arg("origin")
+        .arg(git_ref)
         .current_dir(abbs_path)
         .output()
         .await?;
