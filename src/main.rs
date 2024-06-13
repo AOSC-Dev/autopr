@@ -157,7 +157,7 @@ async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Resu
 
     if old_pr.items.len() == 100 {
         info!("Too manys pull request is open. avoid webhook request");
-        return Ok(())
+        return Ok(());
     }
 
     tokio::spawn(async move {
@@ -204,55 +204,67 @@ async fn fetch_pkgs_updates(
         update_list.push(line);
     }
 
+    let abbs_path = Path::new("./aosc-os-abbs");
+
     for i in update_list {
         if i.starts_with("#") {
             continue;
         }
 
-        let entry = json.iter().find(|x| x.name == i);
-        match entry {
-            None => {
-                info!("Package has no update: {}", i);
-                continue;
-            }
-            Some(x) => {
-                info!("Creating Pull Request: {}", x.name);
-                let octocrab_shared = octoctab.clone();
-                let pr = create_pr(octoctab.clone(), x.name.clone(), x.after.clone()).await;
+        let pkgs = if i.starts_with("groups/") {
+            let mut pkgs = vec![];
+            group_pkgs(&mut pkgs, &i, abbs_path).await?;
+            pkgs
+        } else {
+            vec![i]
+        };
 
-                match pr {
-                    Ok(Some((num, url))) => {
-                        info!("Pull Request created: {}: {}", num, url);
-                        match build_pr(client, num).await {
-                            Ok(()) => {
-                                info!("PR pipeline is created.");
-                            }
-                            Err(e) => warn!("Failed to create pr pipeline: {e}"),
-                        }
-                    }
-                    Ok(None) => {
-                        warn!("Branch already exists.");
-                    }
-                    Err(e) => {
-                        warn!("Failed to create pr: {e}");
-                        let e = e.to_string();
-                        if e != "PR exists" {
-                            let bot_name = bot_name.clone();
-                            tokio::spawn(async move {
-                                if let Err(e) = create_issue(
-                                    octocrab_shared,
-                                    &e,
-                                    &format!(
-                                        "autopr: failed to create pull request for package: {}",
-                                        i
-                                    ),
-                                    bot_name
-                                )
-                                .await
-                                {
-                                    warn!("{e}");
+        for i in pkgs {
+            let entry = json.iter().find(|x| x.name == i);
+            match entry {
+                None => {
+                    info!("Package has no update: {}", i);
+                    continue;
+                }
+                Some(x) => {
+                    info!("Creating Pull Request: {}", x.name);
+                    let octocrab_shared = octoctab.clone();
+                    let pr = create_pr(octoctab.clone(), x.name.clone(), x.after.clone(), abbs_path).await;
+
+                    match pr {
+                        Ok(Some((num, url))) => {
+                            info!("Pull Request created: {}: {}", num, url);
+                            match build_pr(client, num).await {
+                                Ok(()) => {
+                                    info!("PR pipeline is created.");
                                 }
-                            });
+                                Err(e) => warn!("Failed to create pr pipeline: {e}"),
+                            }
+                        }
+                        Ok(None) => {
+                            warn!("Branch already exists.");
+                        }
+                        Err(e) => {
+                            warn!("Failed to create pr: {e}");
+                            let e = e.to_string();
+                            if e != "PR exists" {
+                                let bot_name = bot_name.clone();
+                                tokio::spawn(async move {
+                                    if let Err(e) = create_issue(
+                                        octocrab_shared,
+                                        &e,
+                                        &format!(
+                                            "autopr: failed to create pull request for package: {}",
+                                            i
+                                        ),
+                                        bot_name,
+                                    )
+                                    .await
+                                    {
+                                        warn!("{e}");
+                                    }
+                                });
+                            }
                         }
                     }
                 }
@@ -265,11 +277,32 @@ async fn fetch_pkgs_updates(
     Ok(())
 }
 
-async fn create_pr(client: Arc<Octocrab>, pkg: String, after: String) -> Result<Option<(u64, String)>> {
+async fn group_pkgs(pkgs: &mut Vec<String>, group: &str, abbs_path: &Path) -> Result<()> {
+    let f = fs::File::open(abbs_path.join(group)).await?;
+
+    let mut lines = BufReader::new(f).lines();
+
+    while let Some(line) = lines.next_line().await? {
+        if line.starts_with("groups/") {
+            Box::pin(group_pkgs(pkgs, &line, abbs_path)).await?;
+        } else {
+            pkgs.push(line.trim().to_string());
+        }
+    }
+
+    Ok(())
+}
+
+async fn create_pr(
+    client: Arc<Octocrab>,
+    pkg: String,
+    after: String,
+    abbs_path: &Path,
+) -> Result<Option<(u64, String)>> {
     let branch = format!("{pkg}-{after}");
     find_old_pr(client.clone(), &branch).await?;
 
-    let path = Path::new("./aosc-os-abbs").to_path_buf();
+    let path = abbs_path.to_path_buf();
     if !path.is_dir() {
         Command::new("git")
             .arg("clone")
@@ -296,7 +329,6 @@ async fn create_pr(client: Arc<Octocrab>, pkg: String, after: String) -> Result<
 
     let find_update = find_update_and_update_checksum(pkg, path.clone()).await?;
 
-
     if let Some(find_update) = find_update {
         let pr = open_pr(
             OpenPRRequest {
@@ -310,7 +342,7 @@ async fn create_pr(client: Arc<Octocrab>, pkg: String, after: String) -> Result<
             client,
         )
         .await?;
-    
+
         Ok(Some(pr))
     } else {
         Ok(None)
