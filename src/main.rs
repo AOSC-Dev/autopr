@@ -207,7 +207,7 @@ async fn fetch_pkgs_updates(
     let abbs_path = Path::new("./aosc-os-abbs");
 
     for i in update_list {
-        if i.starts_with("#") {
+        if i.starts_with('#') {
             continue;
         }
 
@@ -229,7 +229,9 @@ async fn fetch_pkgs_updates(
                 Some(x) => {
                     info!("Creating Pull Request: {}", x.name);
                     let octocrab_shared = octoctab.clone();
-                    let pr = create_pr(octoctab.clone(), x.name.clone(), x.after.clone(), abbs_path).await;
+                    let pr =
+                        create_pr(octoctab.clone(), x.name.clone(), x.after.clone(), abbs_path)
+                            .await;
 
                     match pr {
                         Ok(Some((num, url))) => {

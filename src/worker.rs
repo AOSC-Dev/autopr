@@ -109,27 +109,19 @@ pub async fn find_update_and_update_checksum(
             let mut branches_stdout = BufReader::new(&*branches.stdout).lines();
             let mut branches_stderr = BufReader::new(&*branches.stderr).lines();
 
-            loop {
-                if let Ok(Some(line)) = branches_stdout.next_line().await {
-                    debug!("Exist branch: {line}");
-                    if line.contains(&branch) {
-                        git_reset(&abbs_path).await?;
-                        return Ok(None);
-                    }
-                } else {
-                    break;
+            while let Ok(Some(line)) = branches_stdout.next_line().await {
+                debug!("Exist branch: {line}");
+                if line.contains(&branch) {
+                    git_reset(&abbs_path).await?;
+                    return Ok(None);
                 }
             }
 
-            loop {
-                if let Ok(Some(line)) = branches_stderr.next_line().await {
-                    debug!("Exist branch: {line}");
-                    if line.contains(&branch) {
-                        git_reset(&abbs_path).await?;
-                        return Ok(None);
-                    }
-                } else {
-                    break;
+            while let Ok(Some(line)) = branches_stderr.next_line().await {
+                debug!("Exist branch: {line}");
+                if line.contains(&branch) {
+                    git_reset(&abbs_path).await?;
+                    return Ok(None);
                 }
             }
 
@@ -234,11 +226,11 @@ pub fn get_spec(path: &Path, pkgname: &str) -> Result<(String, PathBuf)> {
     for_each_abbs(path, |pkg, p| {
         if pkgname == pkg {
             let p = p.join("spec");
-            spec = std::fs::read_to_string(&p).ok().and_then(|x| Some((x, p)));
+            spec = std::fs::read_to_string(&p).ok().map(|x| (x, p));
         }
     });
 
-    Ok(spec.ok_or_eyre(format!("{pkgname} does not exist"))?)
+    spec.ok_or_eyre(format!("{pkgname} does not exist"))
 }
 
 async fn acbs_build_gw(pkg_shared: &str, abbs_path_shared: &Path) -> Result<()> {
