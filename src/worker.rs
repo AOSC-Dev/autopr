@@ -935,6 +935,21 @@ async fn crab_pr(
 }
 
 pub async fn find_old_pr(crab: Arc<Octocrab>, head: &str) -> Result<()> {
+    let page = pr_pages(crab, head).await.map_err(|e| {
+        debug!("{e:?}");
+        e
+    })?;
+
+    for old_pr in page.items {
+        if old_pr.head.ref_field == head {
+            bail!("PR exists");
+        }
+    }
+
+    Ok(())
+}
+
+async fn pr_pages(crab: Arc<Octocrab>, head: &str) -> Result<Page<PullRequest>, octocrab::Error> {
     let page = crab
         .pulls("AOSC-Dev", "aosc-os-abbs")
         .list()
@@ -947,13 +962,7 @@ pub async fn find_old_pr(crab: Arc<Octocrab>, head: &str) -> Result<()> {
         .send()
         .await?;
 
-    for old_pr in page.items {
-        if old_pr.head.ref_field == head {
-            bail!("PR exists");
-        }
-    }
-
-    Ok(())
+    Ok(page)
 }
 
 pub async fn old_prs_100(crab: Arc<Octocrab>) -> Result<Page<PullRequest>> {
