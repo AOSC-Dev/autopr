@@ -901,7 +901,10 @@ async fn open_pr_inner(pr: OpenPR<'_>, crab: Arc<Octocrab>) -> Result<PullReques
     find_old_pr(crab.clone(), head).await?;
 
     // create a new pr
-    let pr = crab_pr(crab, title, head, body, tags).await?;
+    let pr = crab_pr(crab, title, head, body, tags).await.map_err(|e| {
+        debug!("{e:?}");
+        e
+    })?;
 
     Ok(pr)
 }
