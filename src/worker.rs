@@ -898,10 +898,21 @@ async fn open_pr_inner(pr: OpenPR<'_>, crab: Arc<Octocrab>) -> Result<PullReques
     };
 
     // check if there are existing open pr
-
     find_old_pr(crab.clone(), head).await?;
 
     // create a new pr
+    let pr = crab_pr(crab, title, head, body, tags).await?;
+
+    Ok(pr)
+}
+
+async fn crab_pr(
+    crab: Arc<Octocrab>,
+    title: &str,
+    head: &str,
+    body: String,
+    tags: Cow<'_, [String]>,
+) -> Result<PullRequest, octocrab::Error> {
     let pr = crab
         .pulls("AOSC-Dev", "aosc-os-abbs")
         .create(title, head, "stable")
