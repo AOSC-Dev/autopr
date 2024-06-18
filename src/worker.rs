@@ -174,7 +174,9 @@ pub async fn find_update_and_update_checksum(
         }
     }
 
-    bail!("{pkg} has no update")
+    warn!("{pkg} has no update");
+
+    Ok(None)
 }
 
 async fn git_reset(abbs_path: &PathBuf) -> Result<()> {
