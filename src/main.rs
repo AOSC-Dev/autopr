@@ -129,7 +129,7 @@ async fn main() -> Result<()> {
 
         // See https://github.com/tokio-rs/axum/blob/main/examples/serve-with-hyper/src/main.rs for
         // more details about this setup
-        tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             loop {
                 let (socket, _remote_addr) = uds.accept().await.unwrap();
 
@@ -150,6 +150,8 @@ async fn main() -> Result<()> {
                 }
             }
         });
+
+        task.await?;
     } else {
         info!("autopr is listening on: {}", &webhook_uri);
         let listener = tokio::net::TcpListener::bind(webhook_uri).await?;
