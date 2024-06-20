@@ -175,7 +175,7 @@ pub async fn find_update_and_update_checksum(
 
             return Ok(Some(FindUpdate {
                 package: pkg.to_string(),
-                branch,
+                branch: branch.to_string(),
                 title,
             }));
         }
