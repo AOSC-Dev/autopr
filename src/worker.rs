@@ -45,6 +45,7 @@ pub async fn find_update_and_update_checksum(
     info!("Running aosc-findupdate ...");
 
     let output = Command::new("aosc-findupdate")
+        .arg("-c")
         .arg("-i")
         .arg(format!(".*/{pkg}$"))
         .current_dir(&abbs_path)
