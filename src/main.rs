@@ -425,7 +425,7 @@ async fn create_pr(
     let mut head_index = 0usize;
     let find_update = if is_groups {
         let mut list = vec![];
-        group_pkgs(&pkg, &mut list).await?;
+        group_pkgs(&path.join(&pkg), &mut list, &path).await?;
         group_find_update(list, path.clone(), &mut head_index).await
     } else {
         vec![find_update_and_update_checksum(pkg, path.clone(), &mut head_index).await?]
@@ -469,7 +469,7 @@ async fn create_pr(
     }
 }
 
-async fn group_pkgs(p: &str, list: &mut Vec<String>) -> Result<()> {
+async fn group_pkgs(p: &Path, list: &mut Vec<String>, abbs_path: &Path) -> Result<()> {
     let s = tokio::fs::read_to_string(p).await?;
     let lines = s.lines();
 
@@ -482,7 +482,7 @@ async fn group_pkgs(p: &str, list: &mut Vec<String>) -> Result<()> {
         if !i.starts_with("groups/") {
             list.push(line);
         } else {
-            Box::pin(group_pkgs(&line, list)).await?;
+            Box::pin(group_pkgs(&abbs_path.join(i), list, abbs_path)).await?;
         }
     }
 
