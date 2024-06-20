@@ -1,17 +1,11 @@
 mod worker;
 
 use std::{
-    convert::Infallible,
-    env::current_dir,
-    path::{Path, PathBuf},
-    sync::Arc,
+    convert::Infallible, env::current_dir, net::SocketAddr, path::{Path, PathBuf}, sync::Arc
 };
 
 use axum::{
-    extract::{connect_info, State},
-    response::IntoResponse,
-    routing::post,
-    Json, Router,
+    extract::{connect_info, State}, response::IntoResponse, routing::post, serve::IncomingStream, Json, Router
 };
 use eyre::{bail, Result};
 
@@ -45,24 +39,38 @@ struct AppState {
     repo_url: String,
 }
 
+// https://github.com/tokio-rs/axum/blob/main/examples/unix-domain-socket/src/main.rs
+#[derive(Clone, Debug)]
+pub enum RemoteAddr {
+    Uds(UdsSocketAddr),
+    Inet(SocketAddr),
+}
+
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
-struct UdsConnectInfo {
+pub struct UdsSocketAddr {
     peer_addr: Arc<tokio::net::unix::SocketAddr>,
     peer_cred: UCred,
 }
 
-impl connect_info::Connected<&UnixStream> for UdsConnectInfo {
+impl connect_info::Connected<&UnixStream> for RemoteAddr {
     fn connect_info(target: &UnixStream) -> Self {
         let peer_addr = target.peer_addr().unwrap();
         let peer_cred = target.peer_cred().unwrap();
 
-        Self {
+        Self::Uds(UdsSocketAddr {
             peer_addr: Arc::new(peer_addr),
             peer_cred,
-        }
+        })
     }
 }
+
+impl<'a> connect_info::Connected<IncomingStream<'a>> for RemoteAddr {
+    fn connect_info(target: IncomingStream) -> Self {
+        Self::Inet(target.remote_addr())
+    }
+}
+
 
 pub static ABBS_REPO_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
 const NEW_PR_URL: &str = "https://buildit.aosc.io/api/pipeline/new_pr";
@@ -125,7 +133,7 @@ async fn main() -> Result<()> {
     if let Some(socket) = webhook_uri.strip_prefix(UNIX_SOCKET_PREFIX) {
         info!("autopr is listening on: {}", &webhook_uri);
         let uds = tokio::net::UnixListener::bind(socket)?;
-        let mut make_service = app.into_make_service_with_connect_info::<UdsConnectInfo>();
+        let mut make_service = app.into_make_service_with_connect_info::<RemoteAddr>();
 
         // See https://github.com/tokio-rs/axum/blob/main/examples/serve-with-hyper/src/main.rs for
         // more details about this setup
