@@ -391,7 +391,7 @@ async fn create_pr(
     let mut is_groups = false;
     let branch = if let Some(v) = pkg.strip_prefix("groups/") {
         is_groups = true;
-        format!("{v}-survey-{}", Local::now().format("%y%m%d"))
+        format!("{v}-survey-{}", Local::now().format("%Y%m%d"))
     } else {
         format!("{pkg}-{}", after.unwrap())
     };
@@ -459,7 +459,7 @@ async fn create_pr(
             OpenPRRequest {
                 git_ref: branch,
                 abbs_path: path,
-                packages: pkgs.join(" "),
+                packages: pkgs.join(","),
                 title: title.unwrap(),
                 tags: None,
                 archs: None,
