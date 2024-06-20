@@ -52,9 +52,6 @@ pub async fn find_update_and_update_checksum(
     abbs_path: PathBuf,
     head_count: &mut usize,
 ) -> Result<Option<FindUpdate>> {
-    // switch to stable branch
-    update_abbs("stable", &abbs_path).await?;
-
     info!("Running aosc-findupdate ...");
 
     let output = Command::new("aosc-findupdate")
