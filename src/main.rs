@@ -428,10 +428,10 @@ async fn create_pr(
         let mut list = vec![];
         group_pkgs(&path.join(&pkg), &mut list, &path).await?;
         update_abbs("stable", &path).await?;
-        group_find_update(list, path.clone(), &mut head_index).await
+        group_find_update(list, path.clone(), &mut head_index, &branch).await
     } else {
         update_abbs("stable", &path).await?;
-        vec![find_update_and_update_checksum(pkg, path.clone(), &mut head_index).await?]
+        vec![find_update_and_update_checksum(pkg, path.clone(), &mut head_index, &branch).await?]
     };
 
     let find_update = find_update.iter().flatten().collect::<Vec<_>>();
