@@ -298,7 +298,7 @@ async fn fetch_pkgs_updates(
         update_list.push(line);
     }
 
-    for i in update_list {
+    'a: for i in update_list {
         if i.starts_with('#') {
             continue;
         }
@@ -318,7 +318,7 @@ async fn fetch_pkgs_updates(
                     for j in &x.warnings {
                         if j.starts_with("Possible downgrade") {
                             warn!("Possible downgrade: {}, so autopr will ignore it.", i);
-                            continue;
+                            continue 'a;
                         }
                     }
 
