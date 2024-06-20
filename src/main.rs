@@ -178,6 +178,7 @@ async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Resu
 struct PkgUpdate {
     name: String,
     after: String,
+    warnings: Vec<String>,
 }
 
 async fn fetch_pkgs_updates(
@@ -216,6 +217,14 @@ async fn fetch_pkgs_updates(
                 continue;
             }
             Some(x) => {
+                if !x.warnings.is_empty() {
+                    info!(
+                        "Package has warning: {:?}, autopr will ignore it",
+                        x.warnings
+                    );
+                    continue;
+                }
+
                 info!("Creating Pull Request: {}", x.name);
                 let octocrab_shared = octoctab.clone();
                 let pr = create_pr(octoctab.clone(), x.name.clone(), x.after.clone()).await;
