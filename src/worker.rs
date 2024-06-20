@@ -117,8 +117,6 @@ pub async fn find_update_and_update_checksum(
                 ver = suffix.to_string();
             }
 
-            let branch = format!("{pkg}-{ver}");
-
             let branches = Command::new("git").arg("branch").output().await?;
 
             let mut branches_stdout = BufReader::new(&*branches.stdout).lines();
