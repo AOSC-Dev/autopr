@@ -15,6 +15,7 @@ use axum::{
     serve::IncomingStream,
     Json, Router,
 };
+use chrono::Local;
 use eyre::{bail, Result};
 
 use hyper::{body::Incoming, Request};
@@ -36,7 +37,10 @@ use tokio::{
 use tower::Service;
 use tracing::{error, info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
-use worker::{find_old_pr, find_update_and_update_checksum, old_prs_100, open_pr, OpenPRRequest};
+use worker::{
+    find_old_pr, find_update_and_update_checksum, git_push, group_find_update, old_prs_100,
+    open_pr, OpenPRRequest,
+};
 
 #[derive(Clone)]
 struct AppState {
@@ -298,59 +302,31 @@ async fn fetch_pkgs_updates(
             continue;
         }
 
-        let entry = json.iter().find(|x| x.name == i);
-        match entry {
-            None => {
-                info!("Package has no update: {}", i);
-                continue;
-            }
-            Some(x) => {
-                for j in &x.warnings {
-                    if j.starts_with("Possible downgrade") {
-                        warn!("Possible downgrade: {}, so autopr will ignore it.", i);
-                        continue;
-                    }
+        if i.starts_with("groups/") {
+            let pr = create_pr(octoctab.clone(), i.clone(), None).await;
+            let octocrab_shared = octoctab.clone();
+            handle_pr(pr, client, bot_name.clone(), octocrab_shared, i).await;
+        } else {
+            let entry = json.iter().find(|x| x.name == i);
+            match entry {
+                None => {
+                    info!("Package has no update: {}", i);
+                    continue;
                 }
-
-                info!("Creating Pull Request: {}", x.name);
-                let octocrab_shared = octoctab.clone();
-                let pr = create_pr(octoctab.clone(), x.name.clone(), x.after.clone()).await;
-
-                match pr {
-                    Ok(Some((num, url))) => {
-                        info!("Pull Request created: {}: {}", num, url);
-                        match build_pr(client, num).await {
-                            Ok(()) => {
-                                info!("PR pipeline is created.");
-                            }
-                            Err(e) => warn!("Failed to create pr pipeline: {e}"),
+                Some(x) => {
+                    for j in &x.warnings {
+                        if j.starts_with("Possible downgrade") {
+                            warn!("Possible downgrade: {}, so autopr will ignore it.", i);
+                            continue;
                         }
                     }
-                    Ok(None) => {
-                        warn!("Branch already exists.");
-                    }
-                    Err(e) => {
-                        warn!("Failed to create pr: {e}");
-                        let e = e.to_string();
-                        if e != "PR exists" {
-                            let bot_name = bot_name.clone();
-                            tokio::spawn(async move {
-                                if let Err(e) = create_issue(
-                                    octocrab_shared,
-                                    &e,
-                                    &format!(
-                                        "autopr: failed to create pull request for package: {}",
-                                        i
-                                    ),
-                                    bot_name,
-                                )
-                                .await
-                                {
-                                    warn!("{e}");
-                                }
-                            });
-                        }
-                    }
+
+                    info!("Creating Pull Request: {}", x.name);
+                    let octocrab_shared = octoctab.clone();
+                    let pr =
+                        create_pr(octoctab.clone(), x.name.clone(), Some(x.after.clone())).await;
+
+                    handle_pr(pr, client, bot_name.clone(), octocrab_shared, i.clone()).await;
                 }
             }
         }
@@ -361,12 +337,64 @@ async fn fetch_pkgs_updates(
     Ok(())
 }
 
+async fn handle_pr(
+    pr: Result<Option<(u64, String)>>,
+    client: &Client,
+    bot_name: Arc<String>,
+    octocrab_shared: Arc<Octocrab>,
+    name: String,
+) {
+    match pr {
+        Ok(Some((num, url))) => {
+            info!("Pull Request created: {}: {}", num, url);
+            match build_pr(client, num).await {
+                Ok(()) => {
+                    info!("PR pipeline is created.");
+                }
+                Err(e) => warn!("Failed to create pr pipeline: {e}"),
+            }
+        }
+        Ok(None) => {
+            warn!("Branch already exists.");
+        }
+        Err(e) => {
+            warn!("Failed to create pr: {e}");
+            let e = e.to_string();
+            if e != "PR exists" {
+                let bot_name = bot_name.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = create_issue(
+                        octocrab_shared,
+                        &e,
+                        &format!(
+                            "autopr: failed to create pull request for package: {}",
+                            name
+                        ),
+                        bot_name,
+                    )
+                    .await
+                    {
+                        warn!("{e}");
+                    }
+                });
+            }
+        }
+    }
+}
+
 async fn create_pr(
     client: Arc<Octocrab>,
     pkg: String,
-    after: String,
+    after: Option<String>,
 ) -> Result<Option<(u64, String)>> {
-    let branch = format!("{pkg}-{after}");
+    let mut is_groups = false;
+    let branch = if let Some(v) = pkg.strip_prefix("groups/") {
+        is_groups = true;
+        format!("{v}-survey-{}", Local::now().format("%y%m%d"))
+    } else {
+        format!("{pkg}-{}", after.unwrap())
+    };
+
     find_old_pr(client.clone(), &branch).await?;
 
     let path = Path::new("./aosc-os-abbs").to_path_buf();
@@ -394,15 +422,42 @@ async fn create_pr(
             .await?;
     }
 
-    let find_update = find_update_and_update_checksum(pkg, path.clone()).await?;
+    let mut head_index = 0usize;
+    let find_update = if is_groups {
+        let mut list = vec![];
+        group_pkgs(&pkg, &mut list).await?;
+        group_find_update(list, path.clone(), &mut head_index).await
+    } else {
+        vec![find_update_and_update_checksum(pkg, path.clone(), &mut head_index).await?]
+    };
 
-    if let Some(find_update) = find_update {
+    let find_update = find_update.iter().flatten().collect::<Vec<_>>();
+
+    let mut branch_res = None;
+    let mut pkgs = vec![];
+
+    let title = if !is_groups {
+        find_update.get(0).map(|x| x.title.clone())
+    } else {
+        Some(branch.replace("-", " "))
+    };
+
+    for i in find_update {
+        branch_res = Some(i.branch.clone());
+        pkgs.push(i.package.clone());
+    }
+
+    if pkgs.is_empty() {
+        Ok(None)
+    } else {
+        let branch = branch_res.unwrap();
+        git_push(&path, &branch).await?;
         let pr = open_pr(
             OpenPRRequest {
-                git_ref: find_update.branch,
+                git_ref: branch,
                 abbs_path: path,
-                packages: find_update.package,
-                title: find_update.title,
+                packages: pkgs.join(" "),
+                title: title.unwrap(),
                 tags: None,
                 archs: None,
             },
@@ -411,9 +466,27 @@ async fn create_pr(
         .await?;
 
         Ok(Some(pr))
-    } else {
-        Ok(None)
     }
+}
+
+async fn group_pkgs(p: &str, list: &mut Vec<String>) -> Result<()> {
+    let s = tokio::fs::read_to_string(p).await?;
+    let lines = s.lines();
+
+    for i in lines {
+        let line = i.trim().to_string();
+        if line.starts_with('#') {
+            continue;
+        }
+
+        if !i.starts_with("groups/") {
+            list.push(line);
+        } else {
+            Box::pin(group_pkgs(&line, list)).await?;
+        }
+    }
+
+    Ok(())
 }
 
 #[derive(Serialize)]

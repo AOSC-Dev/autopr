@@ -35,9 +35,22 @@ pub struct FindUpdate {
     pub title: String,
 }
 
+pub async fn group_find_update(pkgs: Vec<String>, abbs_path: PathBuf, head_count: &mut usize) -> Vec<Option<FindUpdate>> {
+    let mut v = vec![];
+    for pkg in pkgs {
+        let res = find_update_and_update_checksum(pkg, abbs_path.clone(), head_count).await;
+        if let Ok(res) = res {
+            v.push(res);
+        }
+    }
+
+    v
+}
+
 pub async fn find_update_and_update_checksum(
     pkg: String,
     abbs_path: PathBuf,
+    head_count: &mut usize,
 ) -> Result<Option<FindUpdate>> {
     // switch to stable branch
     update_abbs("stable", &abbs_path).await?;
@@ -80,7 +93,7 @@ pub async fn find_update_and_update_checksum(
             let res = write_new_spec(absolute_abbs_path, pkgc).await;
 
             if let Err(e) = res {
-                git_reset(&abbs_path).await?;
+                git_reset(&abbs_path, *head_count).await?;
                 bail!("Failed to run acbs-build to update checksum: {}", e);
             }
 
@@ -112,7 +125,7 @@ pub async fn find_update_and_update_checksum(
             while let Ok(Some(line)) = branches_stdout.next_line().await {
                 debug!("Exist branch: {line}");
                 if line.contains(&branch) {
-                    git_reset(&abbs_path).await?;
+                    git_reset(&abbs_path, *head_count).await?;
                     return Ok(None);
                 }
             }
@@ -120,7 +133,7 @@ pub async fn find_update_and_update_checksum(
             while let Ok(Some(line)) = branches_stderr.next_line().await {
                 debug!("Exist branch: {line}");
                 if line.contains(&branch) {
-                    git_reset(&abbs_path).await?;
+                    git_reset(&abbs_path, *head_count).await?;
                     return Ok(None);
                 }
             }
@@ -142,6 +155,7 @@ pub async fn find_update_and_update_checksum(
                 .current_dir(&abbs_path)
                 .output()
                 .await?;
+
             Command::new("git")
                 .arg("add")
                 .arg(".")
@@ -157,14 +171,7 @@ pub async fn find_update_and_update_checksum(
                 .output()
                 .await?;
 
-            Command::new("git")
-                .arg("push")
-                .arg("--set-upstream")
-                .arg("origin")
-                .arg(&branch)
-                .current_dir(&abbs_path)
-                .output()
-                .await?;
+            *head_count += 1;
 
             return Ok(Some(FindUpdate {
                 package: pkg.to_string(),
@@ -179,10 +186,23 @@ pub async fn find_update_and_update_checksum(
     Ok(None)
 }
 
-async fn git_reset(abbs_path: &PathBuf) -> Result<()> {
+pub async fn git_push(abbs_path: &Path, branch: &str) -> Result<()> {
+    Command::new("git")
+        .arg("push")
+        .arg("--set-upstream")
+        .arg("origin")
+        .arg(&branch)
+        .current_dir(&abbs_path)
+        .output()
+        .await?;
+
+    Ok(())
+}
+
+async fn git_reset(abbs_path: &Path, head_count: usize) -> Result<()> {
     Command::new("git")
         .arg("reset")
-        .arg("HEAD")
+        .arg(format!("HEAD{}", "^".repeat(head_count)))
         .arg("--hard")
         .current_dir(abbs_path)
         .output()
