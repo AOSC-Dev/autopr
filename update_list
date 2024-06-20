@@ -13,6 +13,7 @@ android-simg2img
 android-udev
 antiword
 aoscbootstrap
+aosc-findupdate
 apache-ant
 apache-maven
 apg
@@ -200,3 +201,4 @@ you-get
 yt-dlp
 zsh-completions
 zsh-syntax-highlighting
+
