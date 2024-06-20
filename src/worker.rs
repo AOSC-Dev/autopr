@@ -35,12 +35,12 @@ pub struct FindUpdate {
     pub title: String,
 }
 
-pub async fn group_find_update(pkgs: Vec<String>, abbs_path: PathBuf, head_count: &mut usize) -> Vec<Option<FindUpdate>> {
+pub async fn group_find_update(pkgs: Vec<String>, abbs_path: PathBuf, head_count: &mut usize, branch: &str) -> Vec<Option<FindUpdate>> {
     let mut v = vec![];
     for pkg in pkgs {
         let pkg = pkg.split('/').last();
         if let Some(pkg) = pkg {
-            let res = find_update_and_update_checksum(pkg.to_owned(), abbs_path.clone(), head_count).await;
+            let res = find_update_and_update_checksum(pkg.to_owned(), abbs_path.clone(), head_count, branch).await;
             match res {
                 Ok(res) => v.push(res),
                 Err(e) => error!("{:?}", e),
@@ -55,6 +55,7 @@ pub async fn find_update_and_update_checksum(
     pkg: String,
     abbs_path: PathBuf,
     head_count: &mut usize,
+    branch: &str,
 ) -> Result<Option<FindUpdate>> {
     info!("Running aosc-findupdate ...");
 
@@ -218,11 +219,11 @@ async fn write_new_spec(abbs_path: PathBuf, pkg: String) -> Result<()> {
     let (mut spec, p) = spawn_blocking(move || get_spec(&abbs_path_shared, &pkg_shared)).await??;
 
     for i in 1..=5 {
+        if i > 1 {
+            info!("({i}/5) Retrying to get new spec...");
+        }
         match get_new_spec(&mut spec).await {
             Ok(()) => {
-                if i > 1 {
-                    info!("({i}/5) Retrying to get new spec...");
-                }
 
                 tokio::fs::write(p, spec).await?;
                 return Ok(());
