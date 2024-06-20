@@ -38,9 +38,12 @@ pub struct FindUpdate {
 pub async fn group_find_update(pkgs: Vec<String>, abbs_path: PathBuf, head_count: &mut usize) -> Vec<Option<FindUpdate>> {
     let mut v = vec![];
     for pkg in pkgs {
-        let res = find_update_and_update_checksum(pkg, abbs_path.clone(), head_count).await;
-        if let Ok(res) = res {
-            v.push(res);
+        let pkg = pkg.split('/').last();
+        if let Some(pkg) = pkg {
+            let res = find_update_and_update_checksum(pkg.to_owned(), abbs_path.clone(), head_count).await;
+            if let Ok(res) = res {
+                v.push(res);
+            }
         }
     }
 
