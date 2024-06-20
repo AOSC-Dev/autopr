@@ -1,14 +1,25 @@
 mod worker;
 
 use std::{
+    convert::Infallible,
     env::current_dir,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
-use axum::{extract::State, response::IntoResponse, routing::post, Json, Router};
+use axum::{
+    extract::{connect_info, State},
+    response::IntoResponse,
+    routing::post,
+    Json, Router,
+};
 use eyre::{bail, Result};
 
+use hyper::{body::Incoming, Request};
+use hyper_util::{
+    rt::{TokioExecutor, TokioIo},
+    server,
+};
 use octocrab::{params, Octocrab};
 use once_cell::sync::Lazy;
 use reqwest::{Client, ClientBuilder, StatusCode};
@@ -17,9 +28,11 @@ use serde_json::Value;
 use tokio::{
     fs,
     io::{AsyncBufReadExt, BufReader},
+    net::{unix::UCred, UnixStream},
     process::Command,
 };
-use tracing::{info, level_filters::LevelFilter, warn};
+use tower::Service;
+use tracing::{error, info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 use worker::{find_old_pr, find_update_and_update_checksum, old_prs_100, open_pr, OpenPRRequest};
 
@@ -32,8 +45,28 @@ struct AppState {
     repo_url: String,
 }
 
+#[derive(Clone, Debug)]
+#[allow(dead_code)]
+struct UdsConnectInfo {
+    peer_addr: Arc<tokio::net::unix::SocketAddr>,
+    peer_cred: UCred,
+}
+
+impl connect_info::Connected<&UnixStream> for UdsConnectInfo {
+    fn connect_info(target: &UnixStream) -> Self {
+        let peer_addr = target.peer_addr().unwrap();
+        let peer_cred = target.peer_cred().unwrap();
+
+        Self {
+            peer_addr: Arc::new(peer_addr),
+            peer_cred,
+        }
+    }
+}
+
 pub static ABBS_REPO_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
 const NEW_PR_URL: &str = "https://buildit.aosc.io/api/pipeline/new_pr";
+const UNIX_SOCKET_PREFIX: &str = "unix:";
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -89,10 +122,49 @@ async fn main() -> Result<()> {
             repo_url: std::env::var("repo_url")?,
         });
 
-    let listener = tokio::net::TcpListener::bind(webhook_uri).await?;
-    axum::serve(listener, app).await?;
+    if let Some(socket) = webhook_uri.strip_prefix(UNIX_SOCKET_PREFIX) {
+        let uds = tokio::net::UnixListener::bind(socket)?;
+        tokio::spawn(async move {
+            let mut make_service = app.into_make_service_with_connect_info::<UdsConnectInfo>();
+
+            // See https://github.com/tokio-rs/axum/blob/main/examples/serve-with-hyper/src/main.rs for
+            // more details about this setup
+            loop {
+                let (socket, _remote_addr) = uds.accept().await.unwrap();
+
+                let tower_service = unwrap_infallible(make_service.call(&socket).await);
+
+                tokio::spawn(async move {
+                    let socket = TokioIo::new(socket);
+
+                    let hyper_service =
+                        hyper::service::service_fn(move |request: Request<Incoming>| {
+                            tower_service.clone().call(request)
+                        });
+
+                    if let Err(err) = server::conn::auto::Builder::new(TokioExecutor::new())
+                        .serve_connection_with_upgrades(socket, hyper_service)
+                        .await
+                    {
+                        error!("failed to serve connection: {err:#}");
+                    }
+                });
+            }
+        });
+    } else {
+        info!("autopr is listening on: {}", &webhook_uri);
+        let listener = tokio::net::TcpListener::bind(webhook_uri).await?;
+        axum::serve(listener, app).await?;
+    }
 
     Ok(())
+}
+
+fn unwrap_infallible<T>(result: Result<T, Infallible>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(err) => match err {},
+    }
 }
 
 struct EyreError {
