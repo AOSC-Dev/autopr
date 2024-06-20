@@ -123,34 +123,31 @@ async fn main() -> Result<()> {
         });
 
     if let Some(socket) = webhook_uri.strip_prefix(UNIX_SOCKET_PREFIX) {
+        info!("autopr is listening on: {}", &webhook_uri);
         let uds = tokio::net::UnixListener::bind(socket)?;
-        tokio::spawn(async move {
-            let mut make_service = app.into_make_service_with_connect_info::<UdsConnectInfo>();
+        let mut make_service = app.into_make_service_with_connect_info::<UdsConnectInfo>();
 
-            // See https://github.com/tokio-rs/axum/blob/main/examples/serve-with-hyper/src/main.rs for
-            // more details about this setup
-            loop {
-                let (socket, _remote_addr) = uds.accept().await.unwrap();
+        // See https://github.com/tokio-rs/axum/blob/main/examples/serve-with-hyper/src/main.rs for
+        // more details about this setup
+        loop {
+            let (socket, _remote_addr) = uds.accept().await?;
 
-                let tower_service = unwrap_infallible(make_service.call(&socket).await);
+            let tower_service = unwrap_infallible(make_service.call(&socket).await);
 
-                tokio::spawn(async move {
-                    let socket = TokioIo::new(socket);
+            let socket = TokioIo::new(socket);
 
-                    let hyper_service =
-                        hyper::service::service_fn(move |request: Request<Incoming>| {
-                            tower_service.clone().call(request)
-                        });
-
-                    if let Err(err) = server::conn::auto::Builder::new(TokioExecutor::new())
-                        .serve_connection_with_upgrades(socket, hyper_service)
-                        .await
-                    {
-                        error!("failed to serve connection: {err:#}");
-                    }
+            let hyper_service =
+                hyper::service::service_fn(move |request: Request<Incoming>| {
+                    tower_service.clone().call(request)
                 });
+
+            if let Err(err) = server::conn::auto::Builder::new(TokioExecutor::new())
+                .serve_connection_with_upgrades(socket, hyper_service)
+                .await
+            {
+                error!("failed to serve connection: {err:#}");
             }
-        });
+        }
     } else {
         info!("autopr is listening on: {}", &webhook_uri);
         let listener = tokio::net::TcpListener::bind(webhook_uri).await?;
