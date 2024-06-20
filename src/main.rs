@@ -1,11 +1,19 @@
 mod worker;
 
 use std::{
-    convert::Infallible, env::current_dir, net::SocketAddr, path::{Path, PathBuf}, sync::Arc
+    convert::Infallible,
+    env::current_dir,
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use axum::{
-    extract::{connect_info, State}, response::IntoResponse, routing::post, serve::IncomingStream, Json, Router
+    extract::{connect_info, State},
+    response::IntoResponse,
+    routing::post,
+    serve::IncomingStream,
+    Json, Router,
 };
 use eyre::{bail, Result};
 
@@ -70,7 +78,6 @@ impl<'a> connect_info::Connected<IncomingStream<'a>> for RemoteAddr {
         Self::Inet(target.remote_addr())
     }
 }
-
 
 pub static ABBS_REPO_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
 const NEW_PR_URL: &str = "https://buildit.aosc.io/api/pipeline/new_pr";
@@ -298,12 +305,11 @@ async fn fetch_pkgs_updates(
                 continue;
             }
             Some(x) => {
-                if !x.warnings.is_empty() {
-                    info!(
-                        "Package has warning: {:?}, autopr will ignore it",
-                        x.warnings
-                    );
-                    continue;
+                for j in &x.warnings {
+                    if j.starts_with("Possible downgrade") {
+                        warn!("Possible downgrade: {}, so autopr will ignore it.", i);
+                        continue;
+                    }
                 }
 
                 info!("Creating Pull Request: {}", x.name);
