@@ -41,6 +41,7 @@ use worker::{
     find_old_pr, find_update_and_update_checksum, git_push, group_find_update, old_prs_100,
     open_pr, OpenPRRequest,
 };
+use crate::worker::update_abbs;
 
 #[derive(Clone)]
 struct AppState {
@@ -426,8 +427,10 @@ async fn create_pr(
     let find_update = if is_groups {
         let mut list = vec![];
         group_pkgs(&path.join(&pkg), &mut list, &path).await?;
+        update_abbs("stable", &path).await?;
         group_find_update(list, path.clone(), &mut head_index).await
     } else {
+        update_abbs("stable", &path).await?;
         vec![find_update_and_update_checksum(pkg, path.clone(), &mut head_index).await?]
     };
 
