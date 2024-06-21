@@ -331,12 +331,11 @@ async fn get_update_branch_by_entry(
 ) -> Option<UpdateEntry> {
     if let Some(i) = entry.strip_prefix("groups/") {
         let mut list = vec![];
-        let _ = group_pkgs(&path.join(&entry), &mut list, &path).await;
+        let _ = group_pkgs(&path.join(entry), &mut list, path).await;
 
         let list = list
             .iter()
-            .map(|x| x.split('/').last())
-            .flatten()
+            .filter_map(|x| x.split('/').last())
             .filter(|x| {
                 json.iter().any(|y| {
                     y.name == *x

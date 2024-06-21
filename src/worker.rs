@@ -129,7 +129,7 @@ async fn find_update_and_update_checksum(
 
             while let Ok(Some(line)) = branches_stdout.next_line().await {
                 debug!("Exist branch: {line}");
-                if line.contains(&branch) {
+                if line.contains(branch) {
                     git_reset(&abbs_path, *head_count).await?;
                     return Ok(None);
                 }
@@ -137,7 +137,7 @@ async fn find_update_and_update_checksum(
 
             while let Ok(Some(line)) = branches_stderr.next_line().await {
                 debug!("Exist branch: {line}");
-                if line.contains(&branch) {
+                if line.contains(branch) {
                     git_reset(&abbs_path, *head_count).await?;
                     return Ok(None);
                 }
@@ -148,7 +148,7 @@ async fn find_update_and_update_checksum(
             Command::new("git")
                 .arg("branch")
                 .arg("-f")
-                .arg(&branch)
+                .arg(branch)
                 .arg("stable")
                 .current_dir(&abbs_path)
                 .output()
@@ -156,7 +156,7 @@ async fn find_update_and_update_checksum(
 
             Command::new("git")
                 .arg("checkout")
-                .arg(&branch)
+                .arg(branch)
                 .current_dir(&abbs_path)
                 .output()
                 .await?;
@@ -192,8 +192,8 @@ pub async fn git_push(abbs_path: &Path, branch: &str) -> Result<()> {
         .arg("push")
         .arg("--set-upstream")
         .arg("origin")
-        .arg(&branch)
-        .current_dir(&abbs_path)
+        .arg(branch)
+        .current_dir(abbs_path)
         .output()
         .await?;
 
