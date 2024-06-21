@@ -18,6 +18,7 @@ use axum::{
 use chrono::Local;
 use eyre::{bail, Result};
 
+use crate::worker::update_abbs;
 use hyper::{body::Incoming, Request};
 use hyper_util::{
     rt::{TokioExecutor, TokioIo},
@@ -37,11 +38,7 @@ use tokio::{
 use tower::Service;
 use tracing::{error, info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
-use worker::{
-    find_old_pr, find_update_and_update_checksum, git_push, group_find_update, old_prs_100,
-    open_pr, OpenPRRequest,
-};
-use crate::worker::update_abbs;
+use worker::{find_old_pr, find_update, git_push, old_prs_100, open_pr, OpenPRRequest};
 
 #[derive(Clone)]
 struct AppState {
@@ -259,6 +256,7 @@ async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Resu
             state.update_list,
             state.github_client,
             state.bot_name,
+            Path::new("./aosc-os-abbs"),
         )
         .await;
         info!("{res:?}");
@@ -267,7 +265,7 @@ async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Resu
     Ok(())
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct PkgUpdate {
     name: String,
     after: String,
@@ -279,6 +277,7 @@ async fn fetch_pkgs_updates(
     update_list: PathBuf,
     octoctab: Arc<Octocrab>,
     bot_name: Arc<String>,
+    path: &Path,
 ) -> Result<()> {
     let lock = ABBS_REPO_LOCK.lock().await;
 
@@ -298,44 +297,81 @@ async fn fetch_pkgs_updates(
         update_list.push(line);
     }
 
-    'a: for i in update_list {
+    for i in update_list {
         if i.starts_with('#') {
             continue;
         }
 
-        if i.starts_with("groups/") {
-            let pr = create_pr(octoctab.clone(), i.clone(), None).await;
+        let entry = get_update_branch_by_entry(&json, &i, path).await;
+
+        if let Some(entry) = entry {
+            info!("Creating Pull Request: {}", entry.title);
             let octocrab_shared = octoctab.clone();
+            let pr = create_pr(octoctab.clone(), entry).await;
+
             handle_pr(pr, client, bot_name.clone(), octocrab_shared, i).await;
-        } else {
-            let entry = json.iter().find(|x| x.name == i);
-            match entry {
-                None => {
-                    info!("Package has no update: {}", i);
-                    continue;
-                }
-                Some(x) => {
-                    for j in &x.warnings {
-                        if j.starts_with("Possible downgrade") {
-                            warn!("Possible downgrade: {}, so autopr will ignore it.", i);
-                            continue 'a;
-                        }
-                    }
-
-                    info!("Creating Pull Request: {}", x.name);
-                    let octocrab_shared = octoctab.clone();
-                    let pr =
-                        create_pr(octoctab.clone(), x.name.clone(), Some(x.after.clone())).await;
-
-                    handle_pr(pr, client, bot_name.clone(), octocrab_shared, i.clone()).await;
-                }
-            }
         }
     }
 
     drop(lock);
 
     Ok(())
+}
+
+pub struct UpdateEntry {
+    pub pkgs: Vec<String>,
+    pub branch: String,
+    title: String,
+}
+
+async fn get_update_branch_by_entry(
+    json: &[PkgUpdate],
+    entry: &str,
+    path: &Path,
+) -> Option<UpdateEntry> {
+    if let Some(i) = entry.strip_prefix("groups/") {
+        let mut list = vec![];
+        let _ = group_pkgs(&path.join(&entry), &mut list, &path).await;
+
+        let list = list
+            .iter()
+            .map(|x| x.split('/').last())
+            .flatten()
+            .filter(|x| {
+                json.iter().any(|y| {
+                    y.name == *x
+                        && !y
+                            .warnings
+                            .iter()
+                            .any(|x| !x.starts_with("Possible downgrade"))
+                })
+            })
+            .map(|x| x.to_string())
+            .collect::<Vec<_>>();
+
+        if list.is_empty() {
+            return None;
+        }
+
+        let date = Local::now().format("%Y%m%d");
+
+        Some(UpdateEntry {
+            pkgs: list,
+            branch: format!("{}-survey-{}", i, date),
+            title: format!("{} Survey {}", i, date),
+        })
+    } else {
+        let pkg = json.iter().find(|x| x.name == entry)?;
+        let version = &pkg.after;
+        let branch = format!("{}-{}", entry, version);
+        let title = format!("{}: update to {}", entry, version);
+
+        Some(UpdateEntry {
+            pkgs: vec![entry.to_string()],
+            branch,
+            title,
+        })
+    }
 }
 
 async fn handle_pr(
@@ -383,20 +419,8 @@ async fn handle_pr(
     }
 }
 
-async fn create_pr(
-    client: Arc<Octocrab>,
-    pkg: String,
-    after: Option<String>,
-) -> Result<Option<(u64, String)>> {
-    let mut is_groups = false;
-    let branch = if let Some(v) = pkg.strip_prefix("groups/") {
-        is_groups = true;
-        format!("{v}-survey-{}", Local::now().format("%Y%m%d"))
-    } else {
-        format!("{pkg}-{}", after.unwrap())
-    };
-
-    find_old_pr(client.clone(), &branch).await?;
+async fn create_pr(client: Arc<Octocrab>, entry: UpdateEntry) -> Result<Option<(u64, String)>> {
+    find_old_pr(client.clone(), &entry.branch).await?;
 
     let path = Path::new("./aosc-os-abbs").to_path_buf();
     if !path.is_dir() {
@@ -423,53 +447,29 @@ async fn create_pr(
             .await?;
     }
 
-    let mut head_index = 0usize;
-    let find_update = if is_groups {
-        let mut list = vec![];
-        group_pkgs(&path.join(&pkg), &mut list, &path).await?;
-        update_abbs("stable", &path).await?;
-        group_find_update(list, path.clone(), &mut head_index, &branch).await
-    } else {
-        update_abbs("stable", &path).await?;
-        vec![find_update_and_update_checksum(pkg, path.clone(), &mut head_index, &branch).await?]
-    };
+    let mut head_count = 0usize;
+    update_abbs("stable", &path).await?;
+    let find_update = find_update(&entry, path.clone(), &mut head_count).await;
 
-    let find_update = find_update.iter().flatten().collect::<Vec<_>>();
-
-    let mut branch_res = None;
-    let mut pkgs = vec![];
-
-    let title = if !is_groups {
-        find_update.get(0).map(|x| x.title.clone())
-    } else {
-        Some(branch.replace("-", " "))
-    };
-
-    for i in find_update {
-        branch_res = Some(i.branch.clone());
-        pkgs.push(i.package.clone());
+    if find_update.is_empty() {
+        return Ok(None);
     }
 
-    if pkgs.is_empty() {
-        Ok(None)
-    } else {
-        let branch = branch_res.unwrap();
-        git_push(&path, &branch).await?;
-        let pr = open_pr(
-            OpenPRRequest {
-                git_ref: branch,
-                abbs_path: path,
-                packages: pkgs.join(","),
-                title: title.unwrap(),
-                tags: None,
-                archs: None,
-            },
-            client,
-        )
-        .await?;
+    git_push(&path, &entry.branch).await?;
+    let pr = open_pr(
+        OpenPRRequest {
+            git_ref: entry.branch,
+            abbs_path: path,
+            packages: find_update.join(","),
+            title: entry.title,
+            tags: None,
+            archs: None,
+        },
+        client,
+    )
+    .await?;
 
-        Ok(Some(pr))
-    }
+    Ok(Some(pr))
 }
 
 async fn group_pkgs(p: &Path, list: &mut Vec<String>, abbs_path: &Path) -> Result<()> {

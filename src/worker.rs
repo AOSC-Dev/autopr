@@ -23,40 +23,44 @@ use tokio::{
 use tracing::{debug, error, info, warn};
 use walkdir::WalkDir;
 
+use crate::UpdateEntry;
+
 macro_rules! PR {
     () => {
         "Topic Description\n-----------------\n\n{}\n\nPackage(s) Affected\n-------------------\n\n{}\n\nSecurity Update?\n----------------\n\nNo\n\nBuild Order\n-----------\n\n```\n{}\n```\n\nTest Build(s) Done\n------------------\n\n{}"
     };
 }
 
-pub struct FindUpdate {
-    pub package: String,
-    pub branch: String,
-    pub title: String,
-}
-
-pub async fn group_find_update(pkgs: Vec<String>, abbs_path: PathBuf, head_count: &mut usize, branch: &str) -> Vec<Option<FindUpdate>> {
+pub async fn find_update(
+    entry: &UpdateEntry,
+    abbs_path: PathBuf,
+    head_count: &mut usize,
+) -> Vec<String> {
     let mut v = vec![];
-    for pkg in pkgs {
-        let pkg = pkg.split('/').last();
-        if let Some(pkg) = pkg {
-            let res = find_update_and_update_checksum(pkg.to_owned(), abbs_path.clone(), head_count, branch).await;
-            match res {
-                Ok(res) => v.push(res),
-                Err(e) => error!("{:?}", e),
-            }
+    for pkg in &entry.pkgs {
+        let res = find_update_and_update_checksum(
+            pkg.to_owned(),
+            abbs_path.clone(),
+            head_count,
+            &entry.branch,
+        )
+        .await;
+        match res {
+            Ok(Some(s)) => v.push(s),
+            Ok(None) => warn!("{} has no update", pkg),
+            Err(e) => error!("{:?}", e),
         }
     }
 
     v
 }
 
-pub async fn find_update_and_update_checksum(
+async fn find_update_and_update_checksum(
     pkg: String,
     abbs_path: PathBuf,
     head_count: &mut usize,
     branch: &str,
-) -> Result<Option<FindUpdate>> {
+) -> Result<Option<String>> {
     info!("Running aosc-findupdate ...");
 
     let output = Command::new("aosc-findupdate")
@@ -174,11 +178,7 @@ pub async fn find_update_and_update_checksum(
 
             *head_count += 1;
 
-            return Ok(Some(FindUpdate {
-                package: pkg.to_string(),
-                branch: branch.to_string(),
-                title,
-            }));
+            return Ok(Some(pkg.to_string()));
         }
     }
 
@@ -223,7 +223,6 @@ async fn write_new_spec(abbs_path: PathBuf, pkg: String) -> Result<()> {
         }
         match get_new_spec(&mut spec).await {
             Ok(()) => {
-
                 tokio::fs::write(p, spec).await?;
                 return Ok(());
             }
