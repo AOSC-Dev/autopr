@@ -448,7 +448,7 @@ async fn create_pr(client: Arc<Octocrab>, entry: UpdateEntry) -> Result<Option<(
 
     let mut head_count = 0usize;
     update_abbs("stable", &path).await?;
-    let find_update = find_update(&entry, path.clone(), &mut head_count).await;
+    let find_update = find_update(&entry, path.clone(), &mut head_count).await?;
 
     if find_update.is_empty() {
         return Ok(None);

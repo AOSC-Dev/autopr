@@ -35,8 +35,33 @@ pub async fn find_update(
     entry: &UpdateEntry,
     abbs_path: PathBuf,
     head_count: &mut usize,
-) -> Vec<String> {
+) -> Result<Vec<String>> {
     let mut v = vec![];
+
+    let branches = Command::new("git").arg("branch").output().await?;
+    let mut branches_stdout = BufReader::new(&*branches.stdout).lines();
+
+    let branch = &entry.branch;
+
+    while let Ok(Some(line)) = branches_stdout.next_line().await {
+        if line.contains(&entry.branch) {
+            info!("Branch exist, autopr will ignore it");
+            return Ok(v);
+        }
+
+        if branch.contains("survey") {
+            let mut line_split = line.split('-');
+            line_split.next_back();
+            let s = line_split.collect::<Vec<_>>().join("-");
+            if *branch == s {
+                info!("Survey exist, autopr will ignore it");
+                return Ok(v);
+            }
+        }
+    }
+
+    update_abbs("stable", &abbs_path).await?;
+
     for pkg in &entry.pkgs {
         let res = find_update_and_update_checksum(
             pkg.to_owned(),
@@ -52,7 +77,9 @@ pub async fn find_update(
         }
     }
 
-    v
+    git_push(&abbs_path, &entry.branch).await?;
+
+    Ok(v)
 }
 
 async fn find_update_and_update_checksum(
@@ -120,27 +147,6 @@ async fn find_update_and_update_checksum(
             // skip epoch
             if let Some((_prefix, suffix)) = ver.split_once(':') {
                 ver = suffix.to_string();
-            }
-
-            let branches = Command::new("git").arg("branch").output().await?;
-
-            let mut branches_stdout = BufReader::new(&*branches.stdout).lines();
-            let mut branches_stderr = BufReader::new(&*branches.stderr).lines();
-
-            while let Ok(Some(line)) = branches_stdout.next_line().await {
-                debug!("Exist branch: {line}");
-                if line.contains(branch) {
-                    git_reset(&abbs_path, *head_count).await?;
-                    return Ok(None);
-                }
-            }
-
-            while let Ok(Some(line)) = branches_stderr.next_line().await {
-                debug!("Exist branch: {line}");
-                if line.contains(branch) {
-                    git_reset(&abbs_path, *head_count).await?;
-                    return Ok(None);
-                }
             }
 
             let title = format!("{pkg}: update to {ver}");
