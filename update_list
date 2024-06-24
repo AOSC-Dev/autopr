@@ -205,3 +205,8 @@ zsh-completions
 zsh-syntax-highlighting
 systemd-boot-friend
 typst
+mpd
+ncmpc
+ncmpcpp
+mpd-mpc
+libmpdclient
