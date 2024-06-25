@@ -336,15 +336,7 @@ async fn get_update_branch_by_entry(
         let list = list
             .iter()
             .filter_map(|x| x.split('/').last())
-            .filter(|x| {
-                json.iter().any(|y| {
-                    y.name == *x
-                        && !y
-                            .warnings
-                            .iter()
-                            .any(|x| !x.starts_with("Possible downgrade"))
-                })
-            })
+            .filter(|x| json.iter().any(|y| y.name == *x && !contains_downgrade(y)))
             .map(|x| x.to_string())
             .collect::<Vec<_>>();
 
@@ -361,6 +353,11 @@ async fn get_update_branch_by_entry(
         })
     } else {
         let pkg = json.iter().find(|x| x.name == entry)?;
+
+        if contains_downgrade(pkg) {
+            return None;
+        }
+
         let version = &pkg.after;
         let branch = format!("{}-{}", entry, version);
         let title = format!("{}: update to {}", entry, version);
@@ -371,6 +368,13 @@ async fn get_update_branch_by_entry(
             title,
         })
     }
+}
+
+fn contains_downgrade(update_entry: &PkgUpdate) -> bool {
+    update_entry
+        .warnings
+        .iter()
+        .any(|x| x.starts_with("Possible downgrade"))
 }
 
 async fn handle_pr(
