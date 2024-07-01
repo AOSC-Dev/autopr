@@ -257,6 +257,7 @@ async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Resu
             state.github_client,
             state.bot_name,
             Path::new("./aosc-os-abbs"),
+            old_pr.items.len(),
         )
         .await;
         info!("{res:?}");
@@ -278,6 +279,7 @@ async fn fetch_pkgs_updates(
     octoctab: Arc<Octocrab>,
     bot_name: Arc<String>,
     path: &Path,
+    exist_pr: usize,
 ) -> Result<()> {
     let lock = ABBS_REPO_LOCK.lock().await;
 
@@ -297,7 +299,14 @@ async fn fetch_pkgs_updates(
         update_list.push(line);
     }
 
+    let mut success_open_pr_count = exist_pr;
+
     for i in update_list {
+        if success_open_pr_count >= 100 {
+            info!("Too manys pull request is open. avoid find update request");
+            return Ok(());
+        }
+
         if i.starts_with('#') {
             continue;
         }
@@ -309,7 +318,15 @@ async fn fetch_pkgs_updates(
             let octocrab_shared = octoctab.clone();
             let pr = create_pr(octoctab.clone(), entry).await;
 
-            handle_pr(pr, client, bot_name.clone(), octocrab_shared, i).await;
+            handle_pr(
+                pr,
+                client,
+                bot_name.clone(),
+                octocrab_shared,
+                i,
+                &mut success_open_pr_count,
+            )
+            .await;
         }
     }
 
@@ -383,10 +400,12 @@ async fn handle_pr(
     bot_name: Arc<String>,
     octocrab_shared: Arc<Octocrab>,
     name: String,
+    pr_len: &mut usize,
 ) {
     match pr {
         Ok(Some((num, url))) => {
             info!("Pull Request created: {}: {}", num, url);
+            *pr_len += 1;
             match build_pr(client, num).await {
                 Ok(()) => {
                     info!("PR pipeline is created.");
