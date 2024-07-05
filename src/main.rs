@@ -17,6 +17,7 @@ use axum::{
 };
 use chrono::Local;
 use eyre::{bail, Result};
+use rand::thread_rng;
 
 use crate::worker::update_abbs;
 use hyper::{body::Incoming, Request};
@@ -26,6 +27,7 @@ use hyper_util::{
 };
 use octocrab::{params, Octocrab};
 use once_cell::sync::Lazy;
+use rand::prelude::SliceRandom;
 use reqwest::{Client, ClientBuilder, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -299,6 +301,8 @@ async fn fetch_pkgs_updates(
         update_list.push(line);
     }
 
+    random_update_list(&mut update_list);
+
     let mut success_open_pr_count = exist_pr;
 
     for i in update_list {
@@ -333,6 +337,11 @@ async fn fetch_pkgs_updates(
     drop(lock);
 
     Ok(())
+}
+
+fn random_update_list(list: &mut Vec<String>) {
+    let mut rng = thread_rng();
+    list.shuffle(&mut rng);
 }
 
 pub struct UpdateEntry {
