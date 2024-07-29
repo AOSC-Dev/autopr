@@ -753,7 +753,6 @@ pub(crate) const ALL_ARCH: &[&str] = &[
     "arm64",
     "loongarch64",
     "loongson3",
-    "mips64r6el",
     "ppc64el",
     "riscv64",
 ];
@@ -1032,10 +1031,6 @@ fn auto_add_label(title: &str) -> Vec<String> {
         ("builddep", vec![String::from("dependencies")]),
         ("depend", vec![String::from("dependencies")]),
         ("core", vec![String::from("core")]),
-        ("mips64r6el", vec![String::from("cip-pilot")]),
-        ("mipsisa64r6el", vec![String::from("cip-pilot")]),
-        ("mipsr6", vec![String::from("cip-pilot")]),
-        ("r6", vec![String::from("cip-pilot")]),
         ("linux-kernel", vec![String::from("kernel")]),
         ("new", vec![String::from("new-packages")]),
         ("preview", vec![String::from("preview")]),
@@ -1073,7 +1068,6 @@ pub const ARM64: &str = "AArch64 `arm64`";
 pub const NOARCH: &str = "Architecture-independent `noarch`";
 pub const LOONGARCH64: &str = "LoongArch 64-bit `loongarch64`";
 pub const LOONGSON3: &str = "Loongson 3 `loongson3`";
-pub const MIPS64R6EL: &str = "MIPS R6 64-bit (Little Endian) `mips64r6el`";
 pub const PPC64EL: &str = "PowerPC 64-bit (Little Endian) `ppc64el`";
 pub const RISCV64: &str = "RISC-V 64-bit `riscv64`";
 
@@ -1086,7 +1080,6 @@ fn format_archs(archs: &[&str]) -> String {
     map.insert("noarch", NOARCH);
     map.insert("loongarch64", LOONGARCH64);
     map.insert("loongson3", LOONGSON3);
-    map.insert("mips64r6el", MIPS64R6EL);
     map.insert("ppc64el", PPC64EL);
     map.insert("riscv64", RISCV64);
 
@@ -1114,24 +1107,9 @@ fn format_archs(archs: &[&str]) -> String {
             s.push('\n');
         }
         s.push_str("**Secondary Architectures**\n\n");
-        newline = true;
     }
 
     for i in ["loongson3", "ppc64el", "riscv64"] {
-        if archs.contains(&i) {
-            s.push_str(&format!("- [ ] {}\n", map[i]));
-        }
-    }
-
-    // Experimental Architectures
-    if archs.contains(&"mips64r6el") {
-        if newline {
-            s.push('\n');
-        }
-        s.push_str("**Experimental Architectures**\n\n");
-    }
-
-    for i in ["mips64r6el"] {
         if archs.contains(&i) {
             s.push_str(&format!("- [ ] {}\n", map[i]));
         }
