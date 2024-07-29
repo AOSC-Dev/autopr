@@ -5,7 +5,7 @@ use std::{
     env::current_dir,
     net::SocketAddr,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{atomic::{AtomicUsize, Ordering}, Arc},
 };
 
 use axum::{
@@ -252,6 +252,8 @@ async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Resu
         return Ok(());
     }
 
+    let exist_pr = Arc::new(AtomicUsize::new(old_pr.items.len()));
+
     tokio::spawn(async move {
         let res = fetch_pkgs_updates(
             &state.client,
@@ -259,7 +261,7 @@ async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Resu
             state.github_client,
             state.bot_name,
             Path::new("./aosc-os-abbs"),
-            old_pr.items.len(),
+            exist_pr.clone(),
         )
         .await;
         info!("{res:?}");
@@ -281,7 +283,7 @@ async fn fetch_pkgs_updates(
     octoctab: Arc<Octocrab>,
     bot_name: Arc<String>,
     path: &Path,
-    exist_pr: usize,
+    exist_pr: Arc<AtomicUsize>,
 ) -> Result<()> {
     let lock = ABBS_REPO_LOCK.lock().await;
 
@@ -303,10 +305,10 @@ async fn fetch_pkgs_updates(
 
     random_update_list(&mut update_list);
 
-    let mut success_open_pr_count = exist_pr;
+    let success_open_pr_count = exist_pr;
 
     for i in update_list {
-        if success_open_pr_count >= 100 {
+        if success_open_pr_count.load(Ordering::SeqCst) >= 100 {
             info!("Too manys pull request is open. avoid find update request");
             return Ok(());
         }
@@ -328,7 +330,7 @@ async fn fetch_pkgs_updates(
                 bot_name.clone(),
                 octocrab_shared,
                 i,
-                &mut success_open_pr_count,
+                success_open_pr_count.clone(),
             )
             .await;
         }
@@ -409,12 +411,12 @@ async fn handle_pr(
     bot_name: Arc<String>,
     octocrab_shared: Arc<Octocrab>,
     name: String,
-    pr_len: &mut usize,
+    pr_len: Arc<AtomicUsize>,
 ) {
     match pr {
         Ok(Some((num, url))) => {
             info!("Pull Request created: {}: {}", num, url);
-            *pr_len += 1;
+            pr_len.fetch_add(1, Ordering::SeqCst);
             match build_pr(client, num).await {
                 Ok(()) => {
                     info!("PR pipeline is created.");
