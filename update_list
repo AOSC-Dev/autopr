@@ -1,6 +1,6 @@
 7-zip
 abcde
-acbs
+!acbs
 acccheck
 acpica-unix
 agrep
@@ -12,8 +12,8 @@ android-platform-tools
 android-simg2img
 android-udev
 antiword
-aoscbootstrap
-aosc-findupdate
+!aoscbootstrap
+!aosc-findupdate
 apache-ant
 apache-maven
 apg
@@ -156,7 +156,7 @@ chrome-gnome-shell
 chromium
 chrony
 chrpath
-ciel
+!ciel
 cifs-utils
 citra
 clamav
@@ -476,7 +476,7 @@ geoipupdate
 getdns
 geteltorito
 gettext
-gh
+!gh
 ghex
 ghidra
 gi-docgen
@@ -879,7 +879,7 @@ mg
 mgba
 micro
 midori
-mihomo
+!mihomo
 milkytracker
 mime-types
 minetest
@@ -980,7 +980,7 @@ pytz
 radare2
 reiser4progs
 reiserfsprogs
-rbw
+!rbw
 shared-mime-info
 skk-jisyo
 snapper
@@ -997,7 +997,7 @@ tzdata
 udftools
 unbound
 unixbench
-v2ray
+!v2ray
 v2ray-plugin
 v2raya
 vscodium
@@ -1011,8 +1011,8 @@ wqy-microhei
 xfsdump
 xfsprogs
 yarn
-you-get
-yt-dlp
+!you-get
+!yt-dlp
 zsh-completions
 zsh-syntax-highlighting
 systemd-boot-friend
