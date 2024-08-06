@@ -323,6 +323,7 @@ async fn fetch_pkgs_updates(
             continue;
         }
 
+        let i = i.strip_prefix("!").unwrap_or(&i).to_string();
         let entry = get_update_branch_by_entry(&json, &i, path).await;
 
         if let Some(entry) = entry {
