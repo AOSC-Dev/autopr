@@ -307,13 +307,19 @@ async fn fetch_pkgs_updates(
 
     let success_open_pr_count = exist_pr;
 
+    let mut avoid_unnecessary_update = false;
+
+    if success_open_pr_count.load(Ordering::SeqCst) >= 100 {
+        info!("Too manys pull request is open. avoid unnecessary find update request");
+        avoid_unnecessary_update = true;
+    }
+    
     for i in update_list {
-        if success_open_pr_count.load(Ordering::SeqCst) >= 100 {
-            info!("Too manys pull request is open. avoid find update request");
-            return Ok(());
+        if i.starts_with('#') {
+            continue;
         }
 
-        if i.starts_with('#') {
+        if avoid_unnecessary_update && !i.starts_with("!") {
             continue;
         }
 
