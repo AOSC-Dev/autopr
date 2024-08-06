@@ -288,7 +288,7 @@ diffutils
 digikam
 direnv
 dirstat
-discord
+!discord
 discount
 dislocker
 distcc
@@ -506,7 +506,7 @@ go-md2man
 gocr
 godot
 goldendict
-google-chrome
+!google-chrome
 gpart
 gparted
 gperf
