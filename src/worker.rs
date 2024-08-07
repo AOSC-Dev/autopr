@@ -43,6 +43,8 @@ pub async fn find_update(
 
     let branch = &entry.branch;
 
+    let mut is_survey = false;
+
     while let Ok(Some(line)) = branches_stdout.next_line().await {
         if line.contains(&entry.branch) {
             info!("Branch exist, autopr will ignore it");
@@ -50,6 +52,7 @@ pub async fn find_update(
         }
 
         if branch.contains("survey") {
+            is_survey = true;
             let mut line_split = line.split('-');
             line_split.next_back();
             let s = line_split.collect::<Vec<_>>().join("-");
@@ -73,7 +76,12 @@ pub async fn find_update(
         match res {
             Ok(Some(s)) => v.push(s),
             Ok(None) => warn!("{} has no update", pkg),
-            Err(e) => error!("{:?}", e),
+            Err(e) => {
+                error!("{:?}", e);
+                if !is_survey {
+                    return Err(e);
+                }
+            }
         }
     }
 
