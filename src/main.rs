@@ -5,7 +5,10 @@ use std::{
     env::current_dir,
     net::SocketAddr,
     path::{Path, PathBuf},
-    sync::{atomic::{AtomicUsize, Ordering}, Arc},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
 use axum::{
@@ -309,14 +312,14 @@ async fn fetch_pkgs_updates(
 
     let mut avoid_unnecessary_update = false;
 
-    if success_open_pr_count.load(Ordering::SeqCst) >= 100 {
-        info!("Too manys pull request is open. avoid unnecessary find update request");
-        avoid_unnecessary_update = true;
-    }
-    
     for i in update_list {
         if i.starts_with('#') {
             continue;
+        }
+
+        if success_open_pr_count.load(Ordering::SeqCst) >= 100 {
+            info!("Too manys pull request is open. avoid unnecessary find update request");
+            avoid_unnecessary_update = true;
         }
 
         if avoid_unnecessary_update && !i.starts_with("!") {
