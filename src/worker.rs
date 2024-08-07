@@ -43,7 +43,7 @@ pub async fn find_update(
 
     let branch = &entry.branch;
 
-    let mut is_survey = false;
+    let is_survey = entry.branch.contains("-survey");
 
     while let Ok(Some(line)) = branches_stdout.next_line().await {
         if line.contains(&entry.branch) {
@@ -52,7 +52,6 @@ pub async fn find_update(
         }
 
         if branch.contains("survey") {
-            is_survey = true;
             let mut line_split = line.split('-');
             line_split.next_back();
             let s = line_split.collect::<Vec<_>>().join("-");
