@@ -311,7 +311,7 @@ async fn fetch_pkgs_updates(
             continue;
         }
 
-        if success_open_pr_count.load(Ordering::SeqCst) >= 100 {
+        if success_open_pr_count.load(Ordering::SeqCst) >= 50 {
             info!("Too manys pull request is open. avoid unnecessary find update request");
             avoid_unnecessary_update = true;
         }
