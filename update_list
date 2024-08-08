@@ -1,6 +1,17 @@
+!acbs
+!aoscbootstrap
+!aosc-findupdate
+!ciel
+!discord
+!gh
+!google-chrome
+!mihomo
+!rbw
+!v2ray
+!you-get
+!yt-dlp
 7-zip
 abcde
-!acbs
 acccheck
 acpica-unix
 agrep
@@ -12,8 +23,6 @@ android-platform-tools
 android-simg2img
 android-udev
 antiword
-!aoscbootstrap
-!aosc-findupdate
 apache-ant
 apache-maven
 apg
@@ -156,7 +165,6 @@ chrome-gnome-shell
 chromium
 chrony
 chrpath
-!ciel
 cifs-utils
 citra
 clamav
@@ -288,7 +296,6 @@ diffutils
 digikam
 direnv
 dirstat
-!discord
 discount
 dislocker
 distcc
@@ -476,7 +483,6 @@ geoipupdate
 getdns
 geteltorito
 gettext
-!gh
 ghex
 ghidra
 gi-docgen
@@ -506,7 +512,6 @@ go-md2man
 gocr
 godot
 goldendict
-!google-chrome
 gpart
 gparted
 gperf
@@ -870,7 +875,6 @@ mg
 mgba
 micro
 midori
-!mihomo
 milkytracker
 mime-types
 minetest
@@ -971,7 +975,6 @@ pytz
 radare2
 reiser4progs
 reiserfsprogs
-!rbw
 shared-mime-info
 skk-jisyo
 snapper
@@ -988,7 +991,6 @@ tzdata
 udftools
 unbound
 unixbench
-!v2ray
 v2ray-plugin
 v2raya
 vscodium
@@ -1002,8 +1004,6 @@ wqy-microhei
 xfsdump
 xfsprogs
 yarn
-!you-get
-!yt-dlp
 zsh-completions
 zsh-syntax-highlighting
 systemd-boot-friend
