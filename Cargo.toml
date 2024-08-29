@@ -19,7 +19,7 @@ abbs-meta-apml = { git = "https://github.com/AOSC-Dev/abbs-meta-rs", package = "
 fancy-regex = "0.13"
 gix = { version = "0.63", default-features = false, features = ["revision"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-abbs-update-checksum-core = { git = "https://github.com/AOSC-Dev/abbs-update-checksum", package = "abbs-update-checksum-core", rev = "f9c19dc3cb978e0cf23a6ad7031e48d7f56bb37e" }
+abbs-update-checksum-core = { git = "https://github.com/AOSC-Dev/abbs-update-checksum", package = "abbs-update-checksum-core", rev = "a9343be2d48c3edae38655dac9b04e1ac8569fe6" }
 hyper = "1.3.1"
 hyper-util = "0.1.5"
 tower = "0.4.13"
