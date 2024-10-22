@@ -1,13 +1,17 @@
 !acbs
+!android-udev
 !aoscbootstrap
 !aosc-findupdate
 !ciel
 !discord
+!frp
 !gh
 !google-chrome
 !mihomo
 !rbw
+!shared-mime-info
 !v2ray
+!xdg-utils
 !you-get
 !yt-dlp
 7-zip
@@ -21,7 +25,6 @@ alacritty
 android-file-transfer
 android-platform-tools
 android-simg2img
-android-udev
 antiword
 apache-ant
 apache-maven
@@ -451,7 +454,6 @@ freetype
 freexl
 frei0r-plugins
 frescobaldi
-frp
 fsearch
 fuse
 fuse-3
@@ -970,7 +972,6 @@ pytz
 radare2
 reiser4progs
 reiserfsprogs
-shared-mime-info
 skk-jisyo
 snapper
 spdx-licenses
