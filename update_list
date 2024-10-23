@@ -7,6 +7,7 @@
 !frp
 !gh
 !google-chrome
+!hwdata
 !mihomo
 !rbw
 !shared-mime-info
@@ -603,7 +604,6 @@ humor-sans
 hunspell
 hunter
 hw-probe
-hwdata
 hwinfo
 hydrapaper
 hyperfine
