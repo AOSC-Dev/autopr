@@ -2,7 +2,10 @@
 !android-udev
 !aoscbootstrap
 !aosc-findupdate
+!archlinux-keyring
 !ciel
+!debian-archive-keyring
+!debian-ports-archive-keyring
 !discord
 !frp
 !gh
@@ -11,6 +14,7 @@
 !mihomo
 !rbw
 !shared-mime-info
+!ubuntu-keyring
 !v2ray
 !v2ray-rules-dat
 !xdg-utils
