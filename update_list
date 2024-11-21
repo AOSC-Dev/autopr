@@ -4,6 +4,7 @@
 !aosc-findupdate
 !archlinux-keyring
 !ciel
+!cloudflared
 !debian-archive-keyring
 !debian-ports-archive-keyring
 !discord
