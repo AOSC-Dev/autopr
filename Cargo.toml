@@ -20,8 +20,5 @@ fancy-regex = "0.14"
 gix = { version = "0.71.0", default-features = false, features = ["revision"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 abbs-update-checksum-core = { git = "https://github.com/AOSC-Dev/abbs-update-checksum", package = "abbs-update-checksum-core", rev = "9c4d07e384b0e66d388f91ff936dc20298f9976a" }
-hyper = "1.4.1"
-hyper-util = "0.1.8"
-tower = "0.5.1"
 chrono = "0.4.38"
 rand = "0.9"
