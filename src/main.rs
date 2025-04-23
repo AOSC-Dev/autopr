@@ -1,34 +1,29 @@
 mod worker;
 
 use std::{
-    convert::Infallible,
     env::current_dir,
     net::SocketAddr,
+    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 
 use axum::{
-    extract::{connect_info, State},
+    Json, Router,
+    extract::{State, connect_info},
     response::IntoResponse,
     routing::post,
     serve::IncomingStream,
-    Json, Router,
 };
 use chrono::Local;
-use eyre::{bail, Result};
-use rand::thread_rng;
+use eyre::{Result, bail};
+use rand::rng;
 
 use crate::worker::update_abbs;
-use hyper::{body::Incoming, Request};
-use hyper_util::{
-    rt::{TokioExecutor, TokioIo},
-    server,
-};
-use octocrab::{params, Octocrab};
+use octocrab::{Octocrab, params};
 use once_cell::sync::Lazy;
 use rand::prelude::SliceRandom;
 use reqwest::{Client, ClientBuilder, StatusCode};
@@ -37,13 +32,12 @@ use serde_json::Value;
 use tokio::{
     fs,
     io::{AsyncBufReadExt, BufReader},
-    net::{unix::UCred, UnixStream},
+    net::{TcpListener, UnixListener, unix::UCred},
     process::Command,
 };
-use tower::Service;
-use tracing::{error, info, level_filters::LevelFilter, warn};
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
-use worker::{find_old_pr, find_update, git_push, old_prs_100, open_pr, OpenPRRequest};
+use tracing::{info, level_filters::LevelFilter, warn};
+use tracing_subscriber::{EnvFilter, Layer, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+use worker::{OpenPRRequest, find_old_pr, find_update, git_push, old_prs_100, open_pr};
 
 #[derive(Clone)]
 struct AppState {
@@ -68,21 +62,22 @@ pub struct UdsSocketAddr {
     peer_cred: UCred,
 }
 
-impl connect_info::Connected<&UnixStream> for RemoteAddr {
-    fn connect_info(target: &UnixStream) -> Self {
-        let peer_addr = target.peer_addr().unwrap();
-        let peer_cred = target.peer_cred().unwrap();
+impl connect_info::Connected<IncomingStream<'_, UnixListener>> for RemoteAddr {
+    fn connect_info(stream: IncomingStream<'_, UnixListener>) -> Self {
+        let peer_addr = stream.io().peer_addr().unwrap();
+        let peer_cred = stream.io().peer_cred().unwrap();
 
-        Self::Uds(UdsSocketAddr {
+        RemoteAddr::Uds(UdsSocketAddr {
             peer_addr: Arc::new(peer_addr),
             peer_cred,
         })
     }
 }
 
-impl<'a> connect_info::Connected<IncomingStream<'a>> for RemoteAddr {
-    fn connect_info(target: IncomingStream) -> Self {
-        Self::Inet(target.remote_addr())
+impl connect_info::Connected<IncomingStream<'_, TcpListener>> for RemoteAddr {
+    fn connect_info(stream: IncomingStream<'_, TcpListener>) -> Self {
+        let peer_addr = stream.io().peer_addr().unwrap();
+        RemoteAddr::Inet(peer_addr)
     }
 }
 
@@ -144,36 +139,24 @@ async fn main() -> Result<()> {
             repo_url: std::env::var("repo_url")?,
         });
 
-    if let Some(socket) = webhook_uri.strip_prefix(UNIX_SOCKET_PREFIX) {
-        info!("autopr is listening on: {}", &webhook_uri);
-        let uds = tokio::net::UnixListener::bind(socket)?;
-        let mut make_service = app.into_make_service_with_connect_info::<RemoteAddr>();
+    if let Some(path) = webhook_uri.strip_prefix(UNIX_SOCKET_PREFIX) {
+        let path = Path::new(path);
+        info!("Listening on unix socket {}", path.display());
+        // remove old unix socket to avoid "Already already in use" error
+        if path.exists() {
+            std::fs::remove_file(path)?;
+        }
 
-        // See https://github.com/tokio-rs/axum/blob/main/examples/serve-with-hyper/src/main.rs for
-        // more details about this setup
-        let task = tokio::spawn(async move {
-            loop {
-                let (socket, _remote_addr) = uds.accept().await.unwrap();
+        let listener = tokio::net::UnixListener::bind(path)?;
 
-                let tower_service = unwrap_infallible(make_service.call(&socket).await);
+        // chmod 777
+        let mut perms = std::fs::metadata(path)?.permissions();
+        perms.set_mode(0o777);
+        std::fs::set_permissions(path, perms)?;
 
-                let socket = TokioIo::new(socket);
-
-                let hyper_service =
-                    hyper::service::service_fn(move |request: Request<Incoming>| {
-                        tower_service.clone().call(request)
-                    });
-
-                if let Err(err) = server::conn::auto::Builder::new(TokioExecutor::new())
-                    .serve_connection_with_upgrades(socket, hyper_service)
-                    .await
-                {
-                    error!("failed to serve connection: {err:#}");
-                }
-            }
-        });
-
-        task.await?;
+        // https://github.com/tokio-rs/axum/blob/main/examples/unix-domain-socket/src/main.rs
+        let make_service = app.into_make_service_with_connect_info::<RemoteAddr>();
+        axum::serve(listener, make_service).await.unwrap();
     } else {
         info!("autopr is listening on: {}", &webhook_uri);
         let listener = tokio::net::TcpListener::bind(webhook_uri).await?;
@@ -181,13 +164,6 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn unwrap_infallible<T>(result: Result<T, Infallible>) -> T {
-    match result {
-        Ok(value) => value,
-        Err(err) => match err {},
-    }
 }
 
 struct EyreError {
@@ -346,7 +322,7 @@ async fn fetch_pkgs_updates(
 }
 
 fn random_update_list(list: &mut Vec<String>) {
-    let mut rng = thread_rng();
+    let mut rng = rng();
     list.shuffle(&mut rng);
 }
 
