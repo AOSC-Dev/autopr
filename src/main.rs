@@ -321,7 +321,7 @@ async fn fetch_pkgs_updates(
     Ok(())
 }
 
-fn random_update_list(list: &mut Vec<String>) {
+fn random_update_list(list: &mut [String]) {
     let mut rng = rng();
     list.shuffle(&mut rng);
 }
@@ -343,7 +343,7 @@ async fn get_update_branch_by_entry(
 
         let list = list
             .iter()
-            .filter_map(|x| x.split('/').last())
+            .filter_map(|x| x.split('/').next_back())
             .filter(|x| json.iter().any(|y| y.name == *x && !contains_downgrade(y)))
             .map(|x| x.to_string())
             .collect::<Vec<_>>();

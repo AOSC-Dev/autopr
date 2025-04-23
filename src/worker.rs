@@ -1,12 +1,12 @@
-use abbs_update_checksum_core::{get_new_spec, ParseErrors};
-use eyre::{bail, eyre, Context, OptionExt, Result};
+use abbs_update_checksum_core::{ParseErrors, get_new_spec};
+use eyre::{Context, OptionExt, Result, bail, eyre};
 use fancy_regex::Regex;
 use gix::{
+    Repository, ThreadSafeRepository,
     prelude::ObjectIdExt,
     sec::{self, trust::DefaultForLevel},
-    Repository, ThreadSafeRepository,
 };
-use octocrab::{models::pulls::PullRequest, params, Octocrab, Page};
+use octocrab::{Octocrab, Page, models::pulls::PullRequest, params};
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
@@ -273,11 +273,11 @@ async fn acbs_build_gw(pkg_shared: &str, abbs_path_shared: &Path) -> Result<()> 
         .arg("-gw")
         .arg(pkg_shared)
         .arg("--log-dir")
-        .arg(&abbs_path_shared.join("acbs-log"))
+        .arg(abbs_path_shared.join("acbs-log"))
         .arg("--cache-dir")
-        .arg(&abbs_path_shared.join("acbs-cache"))
+        .arg(abbs_path_shared.join("acbs-cache"))
         .arg("--temp-dir")
-        .arg(&abbs_path_shared.join("acbs-temp"))
+        .arg(abbs_path_shared.join("acbs-temp"))
         .arg("--tree-dir")
         .arg(abbs_path_shared)
         .current_dir(abbs_path_shared)
