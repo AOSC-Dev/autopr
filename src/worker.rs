@@ -235,8 +235,11 @@ async fn write_new_spec(abbs_path: PathBuf, pkg: String) -> Result<()> {
             info!("({i}/5) Retrying to get new spec...");
         }
         match get_new_spec(&mut spec, |_, _, _, _| {}, 4).await {
-            Ok(()) => {
+            Ok(true) => {
                 tokio::fs::write(p, spec).await?;
+                return Ok(());
+            }
+            Ok(false) => {
                 return Ok(());
             }
             Err(e) => {
