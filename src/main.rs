@@ -46,6 +46,7 @@ struct AppState {
     github_client: Arc<Octocrab>,
     bot_name: Arc<String>,
     repo_url: String,
+    buildit_token: String,
 }
 
 // https://github.com/tokio-rs/axum/blob/main/examples/unix-domain-socket/src/main.rs
@@ -137,6 +138,7 @@ async fn main() -> Result<()> {
             github_client,
             bot_name,
             repo_url: std::env::var("repo_url")?,
+            buildit_token: std::env::var("buildit_token")?,
         });
 
     if let Some(path) = webhook_uri.strip_prefix(UNIX_SOCKET_PREFIX) {
@@ -235,6 +237,7 @@ async fn handler(State(state): State<AppState>, Json(json): Json<Value>) -> Resu
             state.bot_name,
             Path::new("./aosc-os-abbs"),
             exist_pr.clone(),
+            &state.buildit_token,
         )
         .await;
         info!("{res:?}");
@@ -257,6 +260,7 @@ async fn fetch_pkgs_updates(
     bot_name: Arc<String>,
     path: &Path,
     exist_pr: Arc<AtomicUsize>,
+    token: &str,
 ) -> Result<()> {
     let lock = ABBS_REPO_LOCK.lock().await;
 
@@ -311,6 +315,7 @@ async fn fetch_pkgs_updates(
                 octocrab_shared,
                 i,
                 success_open_pr_count.clone(),
+                token,
             )
             .await;
         }
@@ -392,12 +397,13 @@ async fn handle_pr(
     octocrab_shared: Arc<Octocrab>,
     name: String,
     pr_len: Arc<AtomicUsize>,
+    token: &str,
 ) {
     match pr {
         Ok(Some((num, url))) => {
             info!("Pull Request created: {}: {}", num, url);
             pr_len.fetch_add(1, Ordering::SeqCst);
-            match build_pr(client, num).await {
+            match build_pr(client, token, num).await {
                 Ok(()) => {
                     info!("PR pipeline is created.");
                 }
@@ -510,11 +516,12 @@ struct PrRequest {
     pr: u64,
 }
 
-async fn build_pr(client: &Client, num: u64) -> Result<()> {
+async fn build_pr(client: &Client, token: &str, num: u64) -> Result<()> {
     info!("Creating Pull Request pipeline: {}", num);
 
     client
         .post(NEW_PR_URL)
+        .bearer_auth(token)
         .json(&PrRequest { pr: num })
         .send()
         .await?
